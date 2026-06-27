@@ -35,4 +35,18 @@ check "codex model"   0 0 "gpt-5.5" "$(ens_endpoint_field "$R" gpt-5.5@codex mod
 check "codex family"  0 0 "openai"  "$(ens_family_of "$R" gpt-5.5@codex)"
 check "enabled lists codex" 0 0 "gpt-5.5@codex" "$(ens_endpoints_enabled "$R")"
 
+echo "== verdict normalizer =="
+source "$ROOT/scripts/lib/verdict.sh"
+rf="$(mktemp)"
+cat >"$rf" <<'J'
+{"verdict":"CHANGES","findings":[{"file":"a.py","line":4,"severity":"high","issue":"off-by-one"}]}
+J
+out="$(ens_normalize_verdict gpt-5.5@codex json "$rf")"
+check "json verdict parsed" 0 0 '"verdict": "CHANGES"' "$out"
+check "json endpoint stamped" 0 0 'gpt-5.5@codex' "$out"
+printf '===VERDICT=== APPROVED\nlooks good\n===END===\n' >"$rf"
+out="$(ens_normalize_verdict agy@agy sentinel "$rf")"
+check "sentinel verdict parsed" 0 0 '"verdict": "APPROVED"' "$out"
+rm -f "$rf"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
