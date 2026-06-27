@@ -4,13 +4,14 @@ ens_normalize_verdict() { # ENDPOINT MODE RAW_FILE
   python3 - "$1" "$2" "$3" <<'PY'
 import json,re,sys
 ep,mode,raw_path=sys.argv[1],sys.argv[2],sys.argv[3]
-raw=open(raw_path).read()
+raw=open(raw_path, errors='replace').read()
 verdict="ERROR"; findings=[]
 if mode=="json":
     try:
         o=json.loads(raw)
         verdict=str(o.get("verdict","ERROR")).upper()
-        findings=o.get("findings",[]) or []
+        findings=o.get("findings",[])
+        if not isinstance(findings, list): findings=[]
     except Exception:
         verdict="ERROR"
 else:  # sentinel

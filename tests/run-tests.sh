@@ -47,6 +47,12 @@ check "json endpoint stamped" 0 0 'gpt-5.5@codex' "$out"
 printf '===VERDICT=== APPROVED\nlooks good\n===END===\n' >"$rf"
 out="$(ens_normalize_verdict agy@agy sentinel "$rf")"
 check "sentinel verdict parsed" 0 0 '"verdict": "APPROVED"' "$out"
+printf 'not json at all' >"$rf"
+out="$(ens_normalize_verdict ep json "$rf")"
+check "malformed json -> ERROR" 0 0 '"verdict": "ERROR"' "$out"
+printf 'no sentinel here\n' >"$rf"
+out="$(ens_normalize_verdict ep sentinel "$rf")"
+check "sentinel no match -> ERROR" 0 0 '"verdict": "ERROR"' "$out"
 rm -f "$rf"
 
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
