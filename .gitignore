@@ -1,3 +1,6 @@
 # Scratch / local
 scratch/
 *.log
+
+# macOS
+.DS_Store
