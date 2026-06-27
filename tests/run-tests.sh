@@ -19,12 +19,12 @@ check "fast command passes -> 0" 0 "$rc"
 
 echo "== signal classifier =="
 source "$ROOT/scripts/lib/signal.sh"
-ef="$(mktemp)"; echo "Error: quota exceeded for model" >"$ef"
-code="$(ens_classify 1 "$ef" codex 2>/tmp/sig.err)"; sig="$(cat /tmp/sig.err)"
+ef="$(mktemp)"; se="$(mktemp)"; echo "Error: quota exceeded for model" >"$ef"
+code="$(ens_classify 1 "$ef" codex 2>"$se")"; sig="$(cat "$se")"
 check "quota -> exit 10" 10 "$code"
-check "quota -> ENS_SIGNAL" 0 0 "QUOTA" "$sig"
+check "quota -> ENS_SIGNAL" 0 0 'ENS_SIGNAL {"status":"QUOTA_EXHAUSTED"' "$sig"
 echo "please sign in" >"$ef"; code="$(ens_classify 1 "$ef" codex 2>/dev/null)"
 check "auth -> exit 11" 11 "$code"
-rm -f "$ef"
+rm -f "$ef" "$se"
 
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
