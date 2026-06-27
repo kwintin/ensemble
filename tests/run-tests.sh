@@ -17,4 +17,14 @@ check "slow command killed -> 124" 124 "$rc"
 ens_run_timeout 5 -- sh -c 'echo fast'; rc=$?
 check "fast command passes -> 0" 0 "$rc"
 
+echo "== signal classifier =="
+source "$ROOT/scripts/lib/signal.sh"
+ef="$(mktemp)"; echo "Error: quota exceeded for model" >"$ef"
+code="$(ens_classify 1 "$ef" codex 2>/tmp/sig.err)"; sig="$(cat /tmp/sig.err)"
+check "quota -> exit 10" 10 "$code"
+check "quota -> ENS_SIGNAL" 0 0 "QUOTA" "$sig"
+echo "please sign in" >"$ef"; code="$(ens_classify 1 "$ef" codex 2>/dev/null)"
+check "auth -> exit 11" 11 "$code"
+rm -f "$ef"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
