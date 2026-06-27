@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Minimal codex stub. Behavior controlled by $STUB_MODE.
+case "${STUB_MODE:-ok}" in
+  ok)      echo "STUB_OK" ;;
+  empty)   : ;;
+  quota)   echo "Error: quota exceeded" >&2; exit 1 ;;
+  auth)    echo "Error: please sign in (unauthenticated)" >&2; exit 1 ;;
+  *)       echo "STUB_OK" ;;
+esac
