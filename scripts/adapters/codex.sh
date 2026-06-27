@@ -19,6 +19,7 @@ codex_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
   local ep="$1" model="$2" eff="$3" pf="$4" of="$5"
   local schema; schema="$(_codex_schema_file)"
   local prompt; prompt="$(cat "$pf")"
+  local _e_was_set; [[ $- == *e* ]] && _e_was_set=1 || _e_was_set=0
   set +e
   ens_run_timeout 600 -- codex exec \
     --sandbox read-only --ephemeral \
@@ -26,7 +27,7 @@ codex_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
     --output-schema "$schema" -o "$of" \
     "$prompt"
   local rc=$?
-  set -e
+  [ "$_e_was_set" -eq 1 ] && set -e || true
   rm -f "$schema"
   return $rc
 }

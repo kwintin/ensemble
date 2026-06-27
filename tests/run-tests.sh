@@ -67,4 +67,12 @@ check "codex_health auth" 0 0 "auth" "$(STUB_MODE=auth codex_health)"
 check "codex_list_models" 0 0 "gpt-5.5" "$(STUB_MODE=ok codex_list_models)"
 rm -f "$pf" "$of"
 
+echo "== model-cli review =="
+echo "find bugs" > /tmp/ens_prompt.txt
+out="$(STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex --prompt-file /tmp/ens_prompt.txt 2>/dev/null)"; rc=$?
+check "review rc 0" 0 "$rc"
+check "review emits normalized verdict" 0 0 '"endpoint": "gpt-5.5@codex"' "$out"
+out="$(printf 'find bugs' | STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex - 2>/dev/null)"; rc=$?
+check "auth failure -> exit 11" 11 "$rc"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
