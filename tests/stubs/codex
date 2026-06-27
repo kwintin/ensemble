@@ -1,9 +1,23 @@
 #!/usr/bin/env bash
-# Minimal codex stub. Behavior controlled by $STUB_MODE.
-case "${STUB_MODE:-ok}" in
-  ok)      echo "STUB_OK" ;;
-  empty)   : ;;
-  quota)   echo "Error: quota exceeded" >&2; exit 1 ;;
-  auth)    echo "Error: please sign in (unauthenticated)" >&2; exit 1 ;;
-  *)       echo "STUB_OK" ;;
+# args: codex <subcmd> ...   Behavior controlled by $STUB_MODE.
+sub="${1:-}"
+case "$sub" in
+  exec)
+    # find -o OUTFILE and write a schema-conforming verdict there
+    out=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { out="$2"; }; shift; done
+    case "${STUB_MODE:-ok}" in
+      quota) echo "Error: quota exceeded" >&2; exit 1 ;;
+      auth)  echo "Error: please sign in" >&2; exit 1 ;;
+    esac
+    [ -n "$out" ] && printf '{"verdict":"CHANGES","findings":[{"file":"x.py","line":1,"severity":"low","issue":"stub"}]}\n' >"$out"
+    echo "STUB_OK" ;;
+  doctor) [ "${STUB_MODE:-ok}" = "auth" ] && { echo '{"auth":"logged_out"}'; exit 0; }; echo '{"auth":"ok"}' ;;
+  app-server)
+    # emulate JSON-RPC: read lines, answer model/list (id 2)
+    while IFS= read -r line; do
+      case "$line" in
+        *'"id":2'*) printf '{"jsonrpc":"2.0","id":2,"result":{"data":[{"id":"gpt-5.5","model":"gpt-5.5","isDefault":true},{"id":"gpt-5.4","model":"gpt-5.4"}]}}\n' ;;
+      esac
+    done ;;
+  *) echo "STUB_OK" ;;
 esac

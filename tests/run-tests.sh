@@ -55,4 +55,16 @@ out="$(ens_normalize_verdict ep sentinel "$rf")"
 check "sentinel no match -> ERROR" 0 0 '"verdict": "ERROR"' "$out"
 rm -f "$rf"
 
+echo "== codex adapter =="
+source "$ROOT/scripts/lib/timeout.sh"
+source "$ROOT/scripts/adapters/codex.sh"
+pf="$(mktemp)"; of="$(mktemp)"; echo "review this diff" >"$pf"
+STUB_MODE=ok codex_review gpt-5.5@codex gpt-5.5 medium "$pf" "$of"; rc=$?
+check "codex_review rc 0" 0 "$rc"
+check "codex_review wrote verdict json" 0 0 '"verdict"' "$(cat "$of")"
+check "codex_health ok" 0 0 "ok" "$(STUB_MODE=ok codex_health)"
+check "codex_health auth" 0 0 "auth" "$(STUB_MODE=auth codex_health)"
+check "codex_list_models" 0 0 "gpt-5.5" "$(STUB_MODE=ok codex_list_models)"
+rm -f "$pf" "$of"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
