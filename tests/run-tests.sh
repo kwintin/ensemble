@@ -27,4 +27,12 @@ echo "please sign in" >"$ef"; code="$(ens_classify 1 "$ef" codex 2>/dev/null)"
 check "auth -> exit 11" 11 "$code"
 rm -f "$ef" "$se"
 
+echo "== roster =="
+source "$ROOT/scripts/lib/roster.sh"
+R="$ROOT/roster.json"
+check "codex adapter" 0 0 "codex" "$(ens_endpoint_field "$R" gpt-5.5@codex adapter)"
+check "codex model"   0 0 "gpt-5.5" "$(ens_endpoint_field "$R" gpt-5.5@codex model)"
+check "codex family"  0 0 "openai"  "$(ens_family_of "$R" gpt-5.5@codex)"
+check "enabled lists codex" 0 0 "gpt-5.5@codex" "$(ens_endpoints_enabled "$R")"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

@@ -1,0 +1,19 @@
+{
+  "reviewers_default": ["gpt-5.5@codex"],
+  "min_quorum": 1,
+  "endpoints": [
+    {
+      "id": "gpt-5.5@codex",
+      "adapter": "codex",
+      "model": "gpt-5.5",
+      "family": "openai",
+      "effort": "medium",
+      "role": "both",
+      "read_only_mode": "sandbox-read-only",
+      "structured_output": "json",
+      "strengths": ["repo-reasoning", "type-drift", "migrations"],
+      "latency_tier": "slow",
+      "enabled": true
+    }
+  ]
+}
