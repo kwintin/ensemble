@@ -13,12 +13,12 @@ die() { echo "model-cli: $*" >&2; exit 1; }
 verb="${1:-}"; shift || true
 [ "$verb" = "review" ] || die "only 'review' is implemented in this slice"
 
-ENDPOINT=""; PROMPT_FILE=""
+ENDPOINT=""; PROMPT_FILE=""; STDIN_TMP=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --endpoint) ENDPOINT="$2"; shift 2 ;;
     --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
-    -) PROMPT_FILE="$(mktemp)"; cat > "$PROMPT_FILE"; shift ;;
+    -) PROMPT_FILE="$(mktemp)"; cat > "$PROMPT_FILE"; STDIN_TMP="$PROMPT_FILE"; shift ;;
     *) die "unknown arg '$1'" ;;
   esac
 done
@@ -33,7 +33,7 @@ STRUCT="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" structured_output)"
 source "$SCRIPTS/adapters/$ADAPTER.sh"
 
 OUT="$(mktemp)"; ERR="$(mktemp)"
-trap 'rm -f "$OUT" "$ERR"' EXIT
+trap 'rm -f "$OUT" "$ERR" "$STDIN_TMP"' EXIT
 "${ADAPTER}_review" "$ENDPOINT" "$MODEL" "$EFFORT" "$PROMPT_FILE" "$OUT" 2>"$ERR" && rc=0 || rc=$?
 
 if [ "$rc" -eq 124 ]; then ens_signal TIMEOUT "wall-clock guard" "$ENDPOINT"; exit 12; fi
