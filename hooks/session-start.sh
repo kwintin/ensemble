@@ -8,7 +8,8 @@ ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPTS="$ROOT/scripts"
 cat >/dev/null 2>&1 || true   # consume the hook's stdin JSON (unused)
 
-case "${ENSEMBLE_GATE_REMINDERS:-1}" in 0|off|false|no|disabled) exit 0 ;; esac
+_t="$(printf '%s' "${ENSEMBLE_GATE_REMINDERS:-1}" | tr '[:upper:]' '[:lower:]')"
+case "$_t" in 0|off|false|no|disabled) exit 0 ;; esac
 
 source "$SCRIPTS/lib/roster-path.sh" 2>/dev/null || true
 source "$SCRIPTS/lib/roster.sh" 2>/dev/null || true

@@ -561,6 +561,15 @@ check "post-write honors custom globs" 0 0 'hookEventName' "$pw_glob"
 pw_bad="$(printf 'not json' | bash "$ROOT/hooks/post-write.sh")"; rc=$?
 check "post-write survives garbage stdin -> rc 0, silent" 0 "$rc"
 check "post-write garbage -> no output" 0 0 "0" "${#pw_bad}"
+# relative path (no leading slash) into a spec dir must still nudge
+pw_rel="$(echo '{"tool_input":{"file_path":"docs/specs/notes.md"}}' | bash "$ROOT/hooks/post-write.sh")"
+check "post-write nudges on a RELATIVE docs/specs/ path" 0 0 'hookEventName' "$pw_rel"
+# uppercase toggle value must also disable
+pw_OFF="$(echo '{"tool_input":{"file_path":"docs/specs/x.md"}}' | ENSEMBLE_GATE_REMINDERS=OFF bash "$ROOT/hooks/post-write.sh")"
+check "post-write toggle is case-insensitive (OFF)" 0 0 "0" "${#pw_OFF}"
+# large payload (full file body in the JSON) must not break the env/arg limit -> still nudges
+pw_big="$(python3 -c 'import json; print(json.dumps({"tool_input":{"file_path":"docs/specs/big-design.md","content":"x"*400000}}))' | bash "$ROOT/hooks/post-write.sh")"
+check "post-write handles a large payload (temp-file, not env)" 0 0 'hookEventName' "$pw_big"
 
 echo "== hooks surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
@@ -575,9 +584,17 @@ else:
     if "SessionStart" not in hk: errs.append("no SessionStart hook")
     pt=hk.get("PostToolUse",[])
     if not any(m.get("matcher")=="Write|Edit" for m in pt if isinstance(m,dict)): errs.append("no PostToolUse Write|Edit matcher")
-    blob=json.dumps(h)
-    for s in ("session-start.sh","post-write.sh"):
-        if s not in blob: errs.append("hooks.json does not wire "+s)
+    # validate the NESTED command structure (entry -> hooks[] -> {type:command,command}),
+    # the format the official plugins use (not a flat [{type,command}])
+    def cmds(entries):
+        out=[]
+        for e in (entries or []):
+            if isinstance(e,dict):
+                for c in (e.get("hooks") or []):
+                    if isinstance(c,dict) and c.get("type")=="command": out.append(str(c.get("command","")))
+        return out
+    if not any("session-start.sh" in c for c in cmds(hk.get("SessionStart",[]))): errs.append("SessionStart not wired to session-start.sh via a nested command")
+    if not any("post-write.sh" in c for c in cmds(hk.get("PostToolUse",[]))): errs.append("PostToolUse not wired to post-write.sh via a nested command")
 for s in ("hooks/session-start.sh","hooks/post-write.sh"):
     if not os.access(os.path.join(root,s), os.X_OK): errs.append(s+" not executable")
 if errs:
