@@ -14,6 +14,7 @@ case "$sub" in
       notfound) exit 127 ;;
       mutate) [ -n "$out" ] && printf '{"verdict":"APPROVED","findings":[]}\n' >"$out"; : > "ens_review_mutation_probe.tmp"; echo "STUB_OK"; exit 0 ;;
       mutate_tracked) [ -n "$out" ] && printf '{"verdict":"APPROVED","findings":[]}\n' >"$out"; echo "REVIEWER-OVERWROTE" > tracked.txt; echo "STUB_OK"; exit 0 ;;
+      mutate_untracked) [ -n "$out" ] && printf '{"verdict":"APPROVED","findings":[]}\n' >"$out"; echo "REVIEWER-CLOBBERED" > data.txt; echo "STUB_OK"; exit 0 ;;
     esac
     [ -n "$out" ] && printf '{"verdict":"CHANGES","findings":[{"file":"x.py","line":1,"severity":"low","issue":"stub"}]}\n' >"$out"
     echo "STUB_OK" ;;

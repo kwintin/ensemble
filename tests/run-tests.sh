@@ -158,14 +158,26 @@ check "family collision record present" 0 0 '"endpoints"' "$out"
 out2="$(printf hi | ENSEMBLE_ROSTER="$RM" ENS_TEST_MODES='b@codex=auth,c@codex=auth' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc2=$?
 check "below quorum -> exit 4" 4 "$rc2"
 
-echo "== ens-review read-only =="
+echo "== ens-review endpoint-id hardening =="
+pf="$(mktemp)"; echo "x" > "$pf"
+ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers '../../etc/evil@codex' --prompt-file "$pf" >/dev/null 2>&1; rc=$?
+check "path-traversal endpoint id rejected -> exit 1" 1 "$rc"
+ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers '..' --prompt-file "$pf" >/dev/null 2>&1; rc=$?
+check "dotdot endpoint id rejected -> exit 1" 1 "$rc"
+ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers '-rf@codex' --prompt-file "$pf" >/dev/null 2>&1; rc=$?
+check "leading-dash endpoint id rejected -> exit 1" 1 "$rc"
+dup="$(ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers 'a@codex,a@codex,b@codex' --prompt-file "$pf" 2>/dev/null | grep -c '"endpoint": "a@codex"')"
+check "duplicate endpoint ids deduped to one" 0 0 "1" "$dup"
+rm -f "$pf"
+
+echo "== ens-review read-only (worktree isolation) =="
 rotmp="$(mktemp -d)"; ( cd "$rotmp" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
 cp "$RM" "$rotmp/roster.json"
 out="$(cd "$rotmp" && printf hi | ENSEMBLE_ROSTER="$rotmp/roster.json" ENS_TEST_MODES='a@codex=mutate' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
 check "read-only violation -> exit 5" 5 "$rc"
 check "violation flagged in json" 0 0 '"read_only_violation": true' "$out"
 clean="$(cd "$rotmp" && git status --porcelain)"
-check "mutation reverted (tree clean after)" 0 0 "" "$clean"
+check "user tree untouched (reviewer wrote only the disposable copy)" 0 0 "" "$clean"
 rm -rf "$rotmp"
 
 rotmp2="$(mktemp -d)"; ( cd "$rotmp2" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
@@ -183,12 +195,36 @@ out="$(cd "$ro3" && printf hi | ENSEMBLE_ROSTER="$ro3/roster.json" ENS_TEST_MODE
 check "user uncommitted tracked edit preserved" 0 0 "USER-EDIT" "$(cat "$ro3/f.txt")"
 check "reviewer untracked file removed" 0 0 "1" "$([ ! -f "$ro3/ens_review_mutation_probe.tmp" ] && echo 1 || echo 0)"
 check "untracked violation -> exit 5" 5 "$rc"; rm -rf "$ro3"
-# C2: a reviewer overwriting an already-dirty tracked file must be DETECTED and the user's content restored
+# C2: a reviewer overwriting an already-dirty tracked file must be DETECTED and the user's content untouched
 ro4="$(mktemp -d)"; ( cd "$ro4" && git init -q && printf 'orig\n' > tracked.txt && git add tracked.txt && git -c user.email=t@t -c user.name=t commit -q -m init && printf 'USER-WIP\n' > tracked.txt )
 cp "$RM" "$ro4/roster.json"
 out="$(cd "$ro4" && printf hi | ENSEMBLE_ROSTER="$ro4/roster.json" ENS_TEST_MODES='a@codex=mutate_tracked' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
 check "content overwrite of dirty tracked file detected -> exit 5" 5 "$rc"
-check "user WIP restored after reviewer overwrite" 0 0 "USER-WIP" "$(cat "$ro4/tracked.txt")"; rm -rf "$ro4"
+check "user WIP preserved through reviewer overwrite" 0 0 "USER-WIP" "$(cat "$ro4/tracked.txt")"; rm -rf "$ro4"
+
+# Isolation invariant: the user's real tree is NEVER touched, so the prior data-loss residuals are closed.
+# T-new-1: overwriting a pre-existing UNTRACKED file is now safe (was the known undetected residual)
+ro5="$(mktemp -d)"; ( cd "$ro5" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init && printf 'USER-DATA\n' > data.txt )   # data.txt: pre-existing untracked
+cp "$RM" "$ro5/roster.json"
+out="$(cd "$ro5" && printf hi | ENSEMBLE_ROSTER="$ro5/roster.json" ENS_TEST_MODES='a@codex=mutate_untracked' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "pre-existing untracked content preserved (residual closed)" 0 0 "USER-DATA" "$(cat "$ro5/data.txt")"
+check "untracked-overwrite attempt still flagged -> exit 5" 5 "$rc"; rm -rf "$ro5"
+
+# T-new-2: a clean reviewer run with pre-existing untracked files must NOT false-positive to exit 5
+ro6="$(mktemp -d)"; ( cd "$ro6" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init && printf 'junk\n' > junk.txt )   # pre-existing untracked, no mutation
+cp "$RM" "$ro6/roster.json"
+out="$(cd "$ro6" && printf hi | ENSEMBLE_ROSTER="$ro6/roster.json" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "no false read-only violation with pre-existing untracked -> exit 0" 0 "$rc"
+check "clean run leaves pre-existing untracked untouched" 0 0 "junk" "$(cat "$ro6/junk.txt")"; rm -rf "$ro6"
+
+# T-new-3: a .gitignore'd file and the overall real tree survive a mutating reviewer untouched
+ro7="$(mktemp -d)"; ( cd "$ro7" && git init -q && printf '*.log\n' > .gitignore && git add .gitignore && git -c user.email=t@t -c user.name=t commit -q -m init && printf 'SECRET\n' > secret.log )   # secret.log: ignored
+cp "$RM" "$ro7/roster.json"
+before="$(cd "$ro7" && git status --porcelain)"
+out="$(cd "$ro7" && printf hi | ENSEMBLE_ROSTER="$ro7/roster.json" ENS_TEST_MODES='a@codex=mutate' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "ignored file preserved through mutating reviewer" 0 0 "SECRET" "$(cat "$ro7/secret.log")"
+after="$(cd "$ro7" && git status --porcelain)"
+check "real tree status unchanged after mutating reviewer" 0 "$([ "$before" = "$after" ] && echo 0 || echo 1)"; rm -rf "$ro7"
 
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
