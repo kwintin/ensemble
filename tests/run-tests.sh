@@ -447,4 +447,27 @@ if errs:
 PY
 check "review surface contract holds" 0 "$rc"
 
+echo "== delegate surface contract =="
+python3 - "$ROOT" <<'PY'; rc=$?
+import os,sys
+root=sys.argv[1]; errs=[]
+for f in ("skills/delegate-implementation/SKILL.md","commands/delegate.md","agents/ensemble-delegate.md"):
+    p=os.path.join(root,f)
+    if not os.path.isfile(p): errs.append("missing "+f); continue
+    t=open(p).read()
+    if not (t.startswith("---") and t.count("---")>=2): errs.append("no frontmatter: "+f)
+skill=open(os.path.join(root,"skills/delegate-implementation/SKILL.md")).read()
+if "ens-delegate.sh" not in skill: errs.append("delegate skill does not reference ens-delegate.sh")
+agent=open(os.path.join(root,"agents/ensemble-delegate.md")).read()
+# the constrained subagent must NOT grant Write/Edit (worktree is the file-acting path)
+import re
+m=re.search(r'(?m)^tools:\s*(.+)$', agent)
+if not m: errs.append("subagent missing tools: allowlist")
+elif ("Write" in m.group(1)) or ("Edit" in m.group(1)): errs.append("subagent must not allow Write/Edit")
+if not os.access(os.path.join(root,"scripts/ens-delegate.sh"), os.X_OK): errs.append("ens-delegate.sh not executable")
+if errs:
+    [print("  -",e) for e in errs]; sys.exit(1)
+PY
+check "delegate surface contract holds" 0 "$rc"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
