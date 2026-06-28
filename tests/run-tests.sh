@@ -487,14 +487,25 @@ check "family openai (bare gpt)" 0 0 "openai" "$(bash "$ROOT/scripts/ens-setup.s
 check "family anthropic (cross-router)" 0 0 "anthropic" "$(bash "$ROOT/scripts/ens-setup.sh" family 'cloudflare-ai-gateway/anthropic/claude-opus-4-6')"
 check "family unknown (no vendor token)" 0 0 "unknown" "$(bash "$ROOT/scripts/ens-setup.sh" family 'zzz-private-model-9')"
 
+echo "== ens-setup: idfor (engine-safe ids) =="
+check "idfor strips router slash" 0 0 "deepseek-v4-pro@opencode" "$(bash "$ROOT/scripts/ens-setup.sh" idfor 'opencode-go/deepseek-v4-pro' opencode)"
+check "idfor sanitizes spaces/parens" 0 0 "gemini-3.5-flash-medium@agy" "$(bash "$ROOT/scripts/ens-setup.sh" idfor 'Gemini 3.5 Flash (Medium)' agy)"
+idtest="$(bash "$ROOT/scripts/ens-setup.sh" idfor 'kilo/z-ai/glm-5.2' kilo)"
+check "idfor output is engine-safe" 0 "$(printf '%s' "$idtest" | grep -qE '^[A-Za-z0-9._@-]+$' && echo 0 || echo 1)"
+
 echo "== ens-setup: defaults + validate =="
 check "defaults seeds strengths" 0 0 "repo-reasoning" "$(bash "$ROOT/scripts/ens-setup.sh" defaults 'gpt-5.5')"
+check "defaults resolves sub-brand via family (devstral->mistral)" 0 0 "security-crypto" "$(bash "$ROOT/scripts/ens-setup.sh" defaults 'devstral-small')"
 bash "$ROOT/scripts/ens-setup.sh" validate "$ROOT/roster.json" >/dev/null 2>&1; check "validate accepts shipped roster -> 0" 0 "$?"
-badr="$(mktemp)"; printf '%s' '{"endpoints":[{"id":"m@vibe","adapter":"vibe","model":"mistral-medium-3.5","family":"mistral","effort":"medium","role":"executor","structured_output":"sentinel","enabled":true}]}' > "$badr"
-bash "$ROOT/scripts/ens-setup.sh" validate "$badr" >/dev/null 2>&1; check "validate rejects vibe-as-executor -> 1" 1 "$?"
-badr2="$(mktemp)"; printf '%s' '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"bogus","role":"reviewer","structured_output":"json","enabled":true}]}' > "$badr2"
-bash "$ROOT/scripts/ens-setup.sh" validate "$badr2" >/dev/null 2>&1; check "validate rejects bad effort -> 1" 1 "$?"
-rm -f "$badr" "$badr2"
+# reject paths: vibe-as-executor, bad effort, slashed (engine-unsafe) id, missing model, wrong structured_output pairing
+for bad in \
+ '{"endpoints":[{"id":"m@vibe","adapter":"vibe","model":"mistral-medium-3.5","family":"mistral","effort":"medium","role":"executor","structured_output":"sentinel","enabled":true}]}' \
+ '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"bogus","role":"reviewer","structured_output":"json","enabled":true}]}' \
+ '{"endpoints":[{"id":"deepseek/v4@opencode","adapter":"opencode","model":"opencode-go/deepseek-v4-pro","family":"deepseek","effort":"medium","role":"reviewer","structured_output":"sentinel","enabled":true}]}' \
+ '{"endpoints":[{"id":"x@codex","adapter":"codex","family":"openai","effort":"medium","role":"reviewer","structured_output":"json","enabled":true}]}' \
+ '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"medium","role":"reviewer","structured_output":"sentinel","enabled":true}]}' ; do
+  bf="$(mktemp)"; printf '%s' "$bad" > "$bf"; bash "$ROOT/scripts/ens-setup.sh" validate "$bf" >/dev/null 2>&1; check "validate rejects bad roster -> 1" 1 "$?"; rm -f "$bf"
+done
 
 echo "== ens-setup: detect (stubs) =="
 det="$(PATH="$ROOT/tests/stubs:$PATH" ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=ok bash "$ROOT/scripts/ens-setup.sh" detect)"

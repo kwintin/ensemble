@@ -1,31 +1,32 @@
 {
-  "_note": "Benchmark-seeded defaults (2026-06). Auto-detected `family` is a DEFAULT the user confirms/corrects in /ensemble:setup; strengths are starting points refined per endpoint via /ensemble:calibrate. Family is a MODEL property — the SAME model reached via two transports is ONE family (counts once toward quorum).",
+  "_note": "Benchmark-seeded defaults (2026-06). Auto-detected `family` is a DEFAULT the user confirms/corrects in /ensemble:setup; strengths are starting points refined per endpoint via /ensemble:calibrate. Family is a MODEL property — the SAME model reached via two transports is ONE family (counts once toward quorum). Vendor tokens are matched longest-first then alphabetically (deterministic); very short/ambiguous tokens are intentionally omitted (a model with no recognized vendor returns 'unknown' for the user to set).",
   "vendor_families": {
     "deepseek": "deepseek",
     "gemini": "google", "google": "google", "gemma": "google", "gpt-oss": "openai",
     "grok": "xai", "xai": "xai",
     "mistral": "mistral", "devstral": "mistral", "magistral": "mistral", "codestral": "mistral",
     "glm": "zai", "z-ai": "zai", "zai": "zai", "z.ai": "zai",
-    "gpt": "openai", "openai": "openai", "o1": "openai", "o3": "openai", "o4": "openai",
+    "gpt": "openai", "openai": "openai",
     "claude": "anthropic", "anthropic": "anthropic", "opus": "anthropic", "sonnet": "anthropic", "haiku": "anthropic",
     "kimi": "moonshot", "moonshot": "moonshot",
-    "qwen": "qwen", "qwq": "qwen",
-    "llama": "meta", "meta": "meta",
-    "nova": "amazon", "amazon": "amazon",
+    "qwen": "qwen", "qwq": "qwen", "qvq": "qwen",
+    "llama": "meta",
+    "nova": "amazon", "titan": "amazon",
     "mimo": "xiaomi",
     "minimax": "minimax",
-    "nemotron": "nvidia", "jamba": "ai21", "command": "cohere"
+    "nemotron": "nvidia", "jamba": "ai21",
+    "reka": "reka"
   },
-  "model_strengths": [
-    { "match": "deepseek", "strengths": ["payment-security", "injection-patterns", "constraints"], "latency": "slow" },
-    { "match": "grok", "strengths": ["logic-correctness", "edge-cases", "reasoning"], "latency": "fast" },
-    { "match": "gemini", "strengths": ["pattern-consistency", "import-naming", "fast"], "latency": "fast" },
-    { "match": "mistral", "strengths": ["security-crypto", "concise-verdicts"], "latency": "fast" },
-    { "match": "glm", "strengths": ["frontier-logic", "injection-security"], "latency": "fast" },
-    { "match": "claude", "strengths": ["architecture", "judgment", "broad-context"], "latency": "medium" },
-    { "match": "gpt", "strengths": ["repo-reasoning", "type-drift", "migrations"], "latency": "slow" },
-    { "match": "qwen", "strengths": ["coding", "multilingual"], "latency": "medium" },
-    { "match": "kimi", "strengths": ["long-context", "agentic"], "latency": "medium" },
-    { "match": "minimax", "strengths": ["agentic", "tool-use"], "latency": "medium" }
-  ]
+  "family_strengths": {
+    "deepseek": { "strengths": ["payment-security", "injection-patterns", "constraints"], "latency": "slow" },
+    "openai": { "strengths": ["repo-reasoning", "type-drift", "migrations"], "latency": "slow" },
+    "xai": { "strengths": ["logic-correctness", "edge-cases", "reasoning"], "latency": "fast" },
+    "google": { "strengths": ["pattern-consistency", "import-naming"], "latency": "fast" },
+    "mistral": { "strengths": ["security-crypto", "concise-verdicts"], "latency": "fast" },
+    "zai": { "strengths": ["frontier-logic", "injection-security"], "latency": "fast" },
+    "anthropic": { "strengths": ["architecture", "judgment", "broad-context"], "latency": "medium" },
+    "qwen": { "strengths": ["coding", "multilingual"], "latency": "medium" },
+    "moonshot": { "strengths": ["long-context", "agentic"], "latency": "medium" },
+    "minimax": { "strengths": ["agentic", "tool-use"], "latency": "medium" }
+  }
 }
