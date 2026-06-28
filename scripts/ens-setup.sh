@@ -80,8 +80,9 @@ if [ "$sub" = "idfor" ]; then
 import re,sys
 model,adapter=sys.argv[1],sys.argv[2]
 seg=model.rsplit("/",1)[-1].lower()                 # last path segment of a router id
-seg=re.sub(r"[^a-z0-9._-]+","-",seg).strip("-._")    # engine-safe charset (^[A-Za-z0-9._@-]+$ after @adapter)
-seg=re.sub(r"-{2,}","-",seg) or "model"
+seg=re.sub(r"[^a-z0-9._-]+","-",seg)                 # engine-safe charset
+seg=re.sub(r"-{2,}","-",seg); seg=re.sub(r"\.{2,}",".",seg)  # no '..' (engines reject *..*)
+seg=seg.strip("-._") or "model"
 ad=re.sub(r"[^a-z0-9_-]+","-",adapter.lower()).strip("-") or "adapter"
 print("%s@%s" % (seg, ad))
 PY
@@ -130,7 +131,9 @@ for i,e in enumerate(eps):
     if not isinstance(e,dict): errs.append("endpoint %d not an object"%i); continue
     eid=e.get("id"); ad=e.get("adapter")
     if not eid: errs.append("endpoint %d missing id"%i); continue
-    if not ID_RE.match(str(eid)): errs.append("%s: id has chars the engines reject (use an engine-safe id like 'model-token@adapter')"%eid)
+    # mirror ens-review.sh's FULL endpoint-id grammar, not just the charset
+    if (not ID_RE.match(str(eid))) or str(eid).startswith("-") or ".." in str(eid) or str(eid) in (".",".."):
+        errs.append("%s: id is not engine-safe (no '/'/space/'..'/leading '-'; use 'model-token@adapter')"%eid)
     if eid in ids: errs.append("duplicate id '%s'"%eid)
     ids.add(eid)
     if not ad or not os.path.isfile(os.path.join(scripts,"adapters",str(ad)+".sh")): errs.append("%s: unknown adapter '%s'"%(eid,ad)); continue

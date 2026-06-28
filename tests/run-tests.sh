@@ -502,6 +502,7 @@ for bad in \
  '{"endpoints":[{"id":"m@vibe","adapter":"vibe","model":"mistral-medium-3.5","family":"mistral","effort":"medium","role":"executor","structured_output":"sentinel","enabled":true}]}' \
  '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"bogus","role":"reviewer","structured_output":"json","enabled":true}]}' \
  '{"endpoints":[{"id":"deepseek/v4@opencode","adapter":"opencode","model":"opencode-go/deepseek-v4-pro","family":"deepseek","effort":"medium","role":"reviewer","structured_output":"sentinel","enabled":true}]}' \
+ '{"endpoints":[{"id":"a..b@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"medium","role":"reviewer","structured_output":"json","enabled":true}]}' \
  '{"endpoints":[{"id":"x@codex","adapter":"codex","family":"openai","effort":"medium","role":"reviewer","structured_output":"json","enabled":true}]}' \
  '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"medium","role":"reviewer","structured_output":"sentinel","enabled":true}]}' ; do
   bf="$(mktemp)"; printf '%s' "$bad" > "$bf"; bash "$ROOT/scripts/ens-setup.sh" validate "$bf" >/dev/null 2>&1; check "validate rejects bad roster -> 1" 1 "$?"; rm -f "$bf"
