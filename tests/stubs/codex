@@ -6,7 +6,7 @@ case "$sub" in
     # find -o OUTFILE and write a schema-conforming verdict there
     _all_args=" $* "
     out=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { out="$2"; }; shift; done
-    case "$_all_args" in *" --dangerously-bypass-approvals-and-sandbox "*) : ;; *) echo "STUB ERROR: codex_review must pass --dangerously-bypass-approvals-and-sandbox" >&2; exit 90 ;; esac
+    case "$_all_args" in *" --sandbox read-only "*) : ;; *) echo "STUB ERROR: codex_review must pass --sandbox read-only" >&2; exit 90 ;; esac
     case "${STUB_MODE:-ok}" in
       quota) echo "Error: quota exceeded" >&2; exit 1 ;;
       auth)  echo "Error: please sign in" >&2; exit 1 ;;

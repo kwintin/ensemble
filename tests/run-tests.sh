@@ -7,7 +7,7 @@ export PATH="$HERE/stubs:$PATH"   # stubs shadow real CLIs
 PASS=0; FAIL=0
 
 echo "== harness =="
-out="$(STUB_MODE=ok codex exec --dangerously-bypass-approvals-and-sandbox "hi" 2>/dev/null)"; rc=$?
+out="$(STUB_MODE=ok codex exec --sandbox read-only "hi" 2>/dev/null)"; rc=$?
 check "codex stub returns ok" 0 "$rc" "STUB_OK" "$out"
 
 echo "== timeout guard =="

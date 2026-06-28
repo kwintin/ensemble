@@ -25,7 +25,7 @@ codex_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
   local _e_was_set; [[ $- == *e* ]] && _e_was_set=1 || _e_was_set=0
   set +e
   ens_run_timeout 600 -- codex exec \
-    --dangerously-bypass-approvals-and-sandbox --ephemeral \
+    --sandbox read-only --ephemeral \
     -c "model_reasoning_effort=$eff" -m "$model" \
     --output-schema "$schema" -o "$of" \
     "$prompt" </dev/null >/dev/null
