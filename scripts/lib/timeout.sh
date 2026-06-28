@@ -1,11 +1,25 @@
 # shellcheck shell=bash
-# Portable wall-clock guard. No dependency on timeout(1)/gtimeout.
+# Portable wall-clock guard. Prefers GNU coreutils timeout(1)/gtimeout; falls back to perl/python.
 # Usage: ens_run_timeout SECS -- CMD [ARGS...]   (returns CMD rc, or 124 if killed)
 ens_run_timeout() {
   local secs="$1"; shift
   [ "${1:-}" = "--" ] && shift
   case "$secs" in ''|*[!0-9]*) echo "ens_run_timeout: invalid timeout '$secs'" >&2; return 2 ;; esac
   [ "$secs" -gt 0 ] 2>/dev/null || { echo "ens_run_timeout: timeout must be > 0" >&2; return 2; }
+  # Prefer GNU coreutils timeout(1) (gtimeout on macOS/Homebrew): battle-tested
+  # signal/process-group handling + exit-code conventions (124 timeout, 127 missing,
+  # 128+N signal). Fall back to a portable perl/python guard when it is absent.
+  local to=""
+  if   command -v timeout  >/dev/null 2>&1; then to=timeout
+  elif command -v gtimeout >/dev/null 2>&1; then to=gtimeout
+  fi
+  if [ -n "$to" ]; then
+    "$to" --kill-after=10 "$secs" "$@"
+    local rc=$?
+    [ "$rc" -eq 137 ] && rc=124   # SIGKILL after timeout -> normalize to our timeout code
+    return $rc
+  fi
+  # --- portable fallback (no coreutils timeout available) ---
   if command -v perl >/dev/null 2>&1; then
     perl -e '
       my $s = shift @ARGV;

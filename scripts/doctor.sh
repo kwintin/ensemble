@@ -4,6 +4,10 @@ ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPTS="$ROOT/scripts"; ROSTER="${ENSEMBLE_ROSTER:-$ROOT/roster.json}"
 source "$SCRIPTS/lib/timeout.sh"; source "$SCRIPTS/lib/roster.sh"
 [ -r "$ROSTER" ] || { echo "doctor: roster '$ROSTER' missing or unreadable" >&2; exit 1; }
+if ! command -v timeout >/dev/null 2>&1 && ! command -v gtimeout >/dev/null 2>&1; then
+  echo "  note: 'timeout'/'gtimeout' not found — using the perl/python fallback guard." >&2
+  echo "        install GNU coreutils for the robust path (macOS: brew install coreutils)." >&2
+fi
 FAIL=0
 echo "multi-model-cc — doctor"
 SEEN=0
