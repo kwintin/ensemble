@@ -633,6 +633,19 @@ if errs:
 PY
 check "hooks surface contract holds" 0 "$rc"
 
+echo "== doctor: family/quorum summary =="
+DROST="$(mktemp)"
+cat > "$DROST" <<'JSON'
+{"min_quorum":1,"reviewers_default":["gpt-5.5@codex"],"endpoints":[
+ {"id":"gpt-5.5@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"medium","read_only_mode":"sandbox-read-only","role":"both","structured_output":"json","strengths":["repo-reasoning"],"latency_tier":"slow","enabled":true}
+]}
+JSON
+DOUT="$(STUB_MODE=ok ENSEMBLE_ROSTER="$DROST" bash "$ROOT/scripts/doctor.sh" 2>&1)"; drc=$?
+check "doctor exits 0 with a healthy endpoint" 0 "$drc"
+check "doctor prints family/quorum line" 0 0 "Healthy reviewer families: 1 (min_quorum 1)" "$DOUT"
+check "doctor banner is 'ensemble'" 0 0 "ensemble — doctor" "$DOUT"
+rm -f "$DROST"
+
 echo "== plugin manifest + command surface =="
 python3 - "$ROOT" <<'PY'; rc=$?
 import json, os, sys
