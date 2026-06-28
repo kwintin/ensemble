@@ -77,7 +77,12 @@ cmd_run() {
   fi
   [ "${#eps[@]}" -gt 0 ] || die "run: no enabled reviewer endpoints"
 
-  local RUN_TEMP; RUN_TEMP="$(mktemp -d)" || die "mktemp failed"
+  # honor $TMPDIR explicitly via a template: bare `mktemp -d` ignores $TMPDIR on macOS
+  # (it uses _CS_DARWIN_USER_TEMP_DIR), which would also make the trap-cleanup test vacuous.
+  # RUN_TEMP is INTENTIONALLY NOT `local`: the EXIT trap fires after this function returns,
+  # when a local would be out of scope — so a local RUN_TEMP would leak (the trap's
+  # `[ -n "${RUN_TEMP:-}" ]` guard would see an empty value and skip the rm).
+  RUN_TEMP="$(mktemp -d "${TMPDIR:-/tmp}/ens-calib.XXXXXX")" || die "mktemp failed"
   trap '[ -n "${RUN_TEMP:-}" ] && rm -rf "$RUN_TEMP"' EXIT INT TERM
 
   # enumerate fixtures (sorted, optionally filtered) as TSV: category<TAB>name<TAB>dir<TAB>input
