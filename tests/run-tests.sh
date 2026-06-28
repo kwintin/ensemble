@@ -76,4 +76,10 @@ out="$(printf 'find bugs' | STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" rev
 check "auth failure -> exit 11" 11 "$rc"
 rm -f "$pf"
 
+echo "== doctor =="
+out="$(STUB_MODE=ok bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
+check "doctor reports codex ok" 0 "$rc" "gpt-5.5@codex: ok" "$out"
+out="$(STUB_MODE=auth bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
+check "doctor flags auth -> exit 1" 1 "$rc" "auth" "$out"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
