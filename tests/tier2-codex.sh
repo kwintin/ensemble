@@ -36,6 +36,7 @@ git -C "$TMPDIR_REPO" config user.email "tier2-test@ensemble"
 git -C "$TMPDIR_REPO" config user.name "tier2-test"
 git -C "$TMPDIR_REPO" add calc.py
 git -C "$TMPDIR_REPO" commit -q -m "fixture"
+before_head="$(git -C "$TMPDIR_REPO" rev-parse HEAD)"
 echo "  temp repo: $TMPDIR_REPO ($(git -C "$TMPDIR_REPO" rev-parse --short HEAD))"
 
 # ── Section 3: real codex review of planted bug ───────────────────────────────
@@ -108,7 +109,6 @@ if [ -z "$dirty" ]; then
 else
   fail "codex mutated the temp repo tree: $dirty"
 fi
-before_head="$(git -C "$TMPDIR_REPO" rev-parse HEAD)"
 after_head="$(git -C "$TMPDIR_REPO" rev-parse HEAD)"
 [ "$before_head" = "$after_head" ] && pass "HEAD unchanged" || fail "HEAD changed"
 
