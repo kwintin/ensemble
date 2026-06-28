@@ -135,6 +135,26 @@ RES3="$(ENS_MODEL_CLI="$CALSTUB" ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens
 check "scoped run records scope.category" 0 0 "injection" "$(printf '%s' "$RES3" | python3 -c 'import json,sys; print(json.load(sys.stdin)["scope"]["category"])')"
 check "scoped run only has injection cat" 0 0 "['injection']" "$(printf '%s' "$RES3" | python3 -c 'import json,sys; print(sorted(json.load(sys.stdin)["ran"][0]["categories"].keys()))')"
 
+echo "== calibrate: run exports an ABSOLUTE roster (relative-CWD safety) =="
+# each fixture review runs cd'd into a temp repo, so model-cli (which re-resolves the
+# roster) must receive an ABSOLUTE ENSEMBLE_ROSTER even if the caller passed a relative
+# one — otherwise it can't find the roster from the new CWD (real-condition bug).
+ABSOUT="$(mktemp)"
+ABSTUB="$(mktemp)"
+cat > "$ABSTUB" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '%s\n' "${ENSEMBLE_ROSTER:-UNSET}" >> "$ABS_OUT"
+ep=""; while [ $# -gt 0 ]; do case "$1" in --endpoint) ep="$2"; shift 2;; *) shift;; esac; done
+cat >/dev/null
+printf '{"endpoint":"%s","verdict":"CHANGES","findings":[],"raw":"XYZZY"}\n' "$ep"
+STUBEOF
+chmod +x "$ABSTUB"
+RELDIR="$(mktemp -d)"; cp "$CALR" "$RELDIR/rr.json"
+( cd "$RELDIR" && ABS_OUT="$ABSOUT" ENS_MODEL_CLI="$ABSTUB" ENSEMBLE_ROSTER="rr.json" \
+    bash "$ROOT/scripts/ens-calibrate.sh" run --corpus "$CALC" >/dev/null 2>&1 )
+check "run passes model-cli an absolute roster path" 0 0 "1" "$(head -1 "$ABSOUT" 2>/dev/null | grep -cE '^/.+/rr\.json$' | tr -d ' ')"
+rm -rf "$ABSTUB" "$ABSOUT" "$RELDIR"
+
 echo "== calibrate: propose =="
 CALPRES="$(mktemp)"
 cat > "$CALPRES" <<'JSON'

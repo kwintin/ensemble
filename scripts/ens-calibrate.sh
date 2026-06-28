@@ -68,6 +68,14 @@ cmd_run() {
   [ -d "$corpus" ] || die "corpus dir not found: $corpus"   # exit 1
   [ -r "$ROSTER" ] || die "roster '$ROSTER' missing or unreadable"
 
+  # Canonicalize the roster to an ABSOLUTE path and export it: each fixture review is
+  # dispatched with `model-cli` run cd'd into a temp repo, and model-cli re-resolves the
+  # roster via roster-path.sh — a relative ENSEMBLE_ROSTER would not resolve from the new
+  # CWD. Exporting the absolute path makes every child use the same roster we enumerated.
+  case "$ROSTER" in /*) : ;; *) ROSTER="$(cd "$(dirname "$ROSTER")" 2>/dev/null && pwd)/$(basename "$ROSTER")" ;; esac
+  [ -r "$ROSTER" ] || die "roster '$ROSTER' missing or unreadable"
+  export ENSEMBLE_ROSTER="$ROSTER"
+
   # target endpoints: enabled reviewers (role reviewer|both); --endpoint narrows to one
   local eps=(); while IFS= read -r e; do [ -n "$e" ] && eps+=("$e"); done < <(ens_reviewers "$ROSTER")
   if [ -n "$only_ep" ]; then
