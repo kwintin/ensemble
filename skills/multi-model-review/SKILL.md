@@ -23,3 +23,8 @@ Drive an independent multi-reviewer consensus loop over the ensemble core.
 - Independence is by model **family**, never transport count.
 - Never re-review without fixing first. Commit between rounds so reviewers see current state.
 - A reviewer that degraded (auth/quota/timeout) is skipped while quorum holds — do not block on it.
+
+## Read-only safety
+- Reviewers run cd'd into a disposable `git worktree` copy at HEAD (your uncommitted tracked changes replayed in), so the engine never writes to your real working tree. `wip_replayed` reports whether that replay succeeded.
+- This isolates working-tree **files**. It does not sandbox a reviewer that deliberately runs git/shell commands against shared refs/stash/config or writes to absolute paths — the codex reviewer runs under `--sandbox read-only`; the others run in plan/read-only mode and are trusted not to.
+- `read_only_guarded: true` means isolation was in force. If `false` (you are not inside a git repo), reviewers ran in the current directory unguarded — the engine warns on stderr; treat a `false` run as best-effort. Inside a git repo, if isolation can't be created the engine fails closed (non-zero) rather than run unguarded.

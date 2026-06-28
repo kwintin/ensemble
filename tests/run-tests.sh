@@ -226,6 +226,31 @@ check "ignored file preserved through mutating reviewer" 0 0 "SECRET" "$(cat "$r
 after="$(cd "$ro7" && git status --porcelain)"
 check "real tree status unchanged after mutating reviewer" 0 "$([ "$before" = "$after" ] && echo 0 || echo 1)"; rm -rf "$ro7"
 
+echo "== ens-review isolation failure / fallback =="
+# T-new-4: inside a git repo where worktree creation fails (unborn HEAD), FAIL CLOSED -> die, never run unguarded
+ro8="$(mktemp -d)"; ( cd "$ro8" && git init -q )   # no commit -> HEAD unborn -> `git worktree add HEAD` fails
+cp "$RM" "$ro8/roster.json"
+out="$(cd "$ro8" && printf hi | ENSEMBLE_ROSTER="$ro8/roster.json" ENS_TEST_MODES='a@codex=mutate' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "worktree-add failure fails closed -> exit 1 (die)" 1 "$rc"
+check "no reviewer ran in real tree on isolation failure (probe absent)" 0 0 "1" "$([ ! -f "$ro8/ens_review_mutation_probe.tmp" ] && echo 1 || echo 0)"
+rm -rf "$ro8"
+
+# T-new-5: outside any git repo, isolation is impossible -> run unguarded but flag it (not a silent bypass)
+ng="$(mktemp -d)"   # NOT a git repo
+cp "$RM" "$ng/roster.json"
+out="$(cd "$ng" && printf hi | ENSEMBLE_ROSTER="$ng/roster.json" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "non-git dir flagged read_only_guarded:false" 0 0 '"read_only_guarded": false' "$out"
+check "non-git dir still reaches quorum -> exit 0" 0 "$rc"
+rm -rf "$ng"
+
+# T-new-6: uncommitted tracked WIP is replayed into the review copy (faithful context) and signalled
+ro9="$(mktemp -d)"; ( cd "$ro9" && git init -q && printf 'v1\n' > a.txt && git add a.txt && git -c user.email=t@t -c user.name=t commit -q -m init && printf 'v2-uncommitted\n' > a.txt )
+cp "$RM" "$ro9/roster.json"
+out="$(cd "$ro9" && printf hi | ENSEMBLE_ROSTER="$ro9/roster.json" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "uncommitted tracked WIP replayed into review copy" 0 0 '"wip_replayed": "yes"' "$out"
+check "WIP review run reaches quorum -> exit 0" 0 "$rc"
+check "WIP review left user tree untouched" 0 0 "v2-uncommitted" "$(cat "$ro9/a.txt")"; rm -rf "$ro9"
+
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
 import os,sys

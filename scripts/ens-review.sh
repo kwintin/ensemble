@@ -13,17 +13,27 @@ die() { echo "ens-review: $*" >&2; exit 1; }
 # large data-loss surface), we run every reviewer cd'd into a DISPOSABLE git
 # worktree checked out at HEAD (with the user's uncommitted tracked changes
 # replayed in for faithful context). The user's real tree is never touched, so
-# any reviewer write lands in the throwaway copy and is discarded wholesale.
-# `read_only_violation` becomes a clean informational signal computed in the
-# copy. Untracked/ignored files are intentionally NOT copied in, so reviewers
-# can neither see nor harm them.
+# any reviewer write to the working tree lands in the throwaway copy and is
+# discarded wholesale. If isolation cannot be established inside a git repo we
+# FAIL CLOSED (die) rather than run unguarded.
+#
+# SCOPE BOUNDARY (documented, not a bug): a *linked* worktree shares the repo's
+# .git (object store, refs, config, stash). This isolates working-tree FILES; it
+# does NOT sandbox a reviewer that deliberately runs git/shell commands against
+# shared refs/stash/config, or writes to absolute paths outside the worktree.
+# That requires OS-level sandboxing -- the codex reviewer runs under
+# `--sandbox read-only`; the other reviewers are invoked in plan/read-only mode
+# and are trusted not to execute mutating commands. Repo hooks are disabled
+# during setup (core.hooksPath=/dev/null) so a hostile hook cannot run either.
 # ----------------------------------------------------------------------------
 
 PROMPT_FILE=""; SUBSET=""; STDIN_TMP=""
-WORK=""; WT=""; MAIN_REPO=""; RO_GUARDED=0
-PIDS=()
+WORK=""; WT=""; MAIN_REPO=""; RO_GUARDED=0; WIP_REPLAYED="none"
+PIDS=(); _cleaned=0
 
 cleanup() {
+  [ "$_cleaned" = 1 ] && return 0
+  _cleaned=1
   # kill any reviewer jobs still running (e.g. on INT/TERM) before tearing down
   for _p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$_p" 2>/dev/null; done
   # remove the disposable worktree (idempotent; safe on a second trap fire)
@@ -34,7 +44,11 @@ cleanup() {
   [ -n "$WORK" ] && rm -rf "$WORK"
   [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"
 }
-trap cleanup EXIT INT TERM
+# On a signal, clean up and ABORT immediately so the script does not resume on
+# torn-down directories; cleanup() is idempotent so the EXIT trap is harmless.
+on_signal() { cleanup; trap - INT TERM EXIT; exit 130; }
+trap cleanup EXIT
+trap on_signal INT TERM
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -46,7 +60,9 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ] || die "need --prompt-file or '-'"
 # absolutize: reviewers run from the worktree cwd, so a relative path would break
-PROMPT_FILE="$(cd "$(dirname "$PROMPT_FILE")" && pwd)/$(basename "$PROMPT_FILE")"
+_pf_dir="$(cd "$(dirname "$PROMPT_FILE")" 2>/dev/null && pwd)" || die "cannot resolve prompt-file directory"
+[ -n "$_pf_dir" ] || die "cannot resolve prompt-file directory"
+PROMPT_FILE="$_pf_dir/$(basename "$PROMPT_FILE")"
 
 # select reviewers
 if [ -n "$SUBSET" ]; then
@@ -78,7 +94,8 @@ test_mode_for() { # ENDPOINT -> mode or empty
   done
 }
 
-WORK="$(mktemp -d)"
+WORK="$(mktemp -d)" || die "mktemp -d failed"
+[ -n "$WORK" ] && [ -d "$WORK" ] || die "could not create work dir"
 
 # ---- build the disposable review worktree (when inside a git work tree) ----
 REVIEW_CWD="$PWD"
@@ -86,22 +103,37 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   MAIN_REPO="$(git rev-parse --show-toplevel 2>/dev/null)"
   git worktree prune >/dev/null 2>&1 || true
   WT="$WORK/wt"
-  if git worktree add --detach --quiet "$WT" HEAD 2>/dev/null; then
+  # core.hooksPath=/dev/null: do not run the repo's post-checkout/post-commit
+  # hooks (which are shared code that could touch real repo state)
+  if git -c core.hooksPath=/dev/null worktree add --detach --quiet "$WT" HEAD 2>/dev/null; then
     RO_GUARDED=1
     # replay the user's uncommitted TRACKED changes into the copy for faithful
-    # review context (untracked/ignored files are deliberately left out)
+    # review context (untracked/ignored files are deliberately left out); surface
+    # a signal if the replay fails so a stale-HEAD review is not silent
     if ! git diff --quiet HEAD 2>/dev/null; then
-      git diff --binary HEAD 2>/dev/null | git -C "$WT" apply --index --whitespace=nowarn 2>/dev/null || true
+      if git diff --binary HEAD 2>/dev/null | git -C "$WT" apply --index --whitespace=nowarn 2>/dev/null; then
+        WIP_REPLAYED="yes"
+      else
+        WIP_REPLAYED="failed"
+        echo "ens-review: warning: could not replay uncommitted changes into the review copy; reviewers will see HEAD" >&2
+      fi
     fi
     # commit the snapshot so the worktree has a CLEAN status baseline; any dirt
     # observed after the reviewers run is therefore a reviewer write
     git -C "$WT" add -A >/dev/null 2>&1 || true
-    git -C "$WT" -c user.email=ensemble@local -c user.name=ensemble -c commit.gpgsign=false \
-      commit --quiet --no-verify --allow-empty -m ensemble-review-snapshot >/dev/null 2>&1 || true
+    git -C "$WT" -c core.hooksPath=/dev/null -c user.email=ensemble@local -c user.name=ensemble \
+      -c commit.gpgsign=false commit --quiet --no-verify --allow-empty -m ensemble-review-snapshot >/dev/null 2>&1 || true
     REVIEW_CWD="$WT"
   else
-    WT=""   # worktree creation failed; fall back to no isolation
+    # isolation was expected (we are in a git repo) but could not be created:
+    # fail closed rather than silently run reviewers against the user's tree
+    WT=""
+    die "could not create an isolated review worktree (git worktree add failed); refusing to run reviewers against your working tree"
   fi
+else
+  # not a git work tree: isolation is impossible; run unguarded but make it loud
+  # (read_only_guarded:false also signals this in the JSON)
+  echo "ens-review: note: not inside a git work tree -- reviewers run unguarded in $PWD" >&2
 fi
 
 # dispatch each reviewer in the background, cwd = the disposable worktree
@@ -117,25 +149,32 @@ wait
 PIDS=()
 
 # did any reviewer write into the isolated copy? (signal only; user tree is safe)
-RO_VIOLATION=0; RO_FILES=""
+RO_VIOLATION=0
 if [ "$RO_GUARDED" = 1 ]; then
-  _ro_status="$(git -C "$WT" status --porcelain 2>/dev/null)"
-  if [ -n "$_ro_status" ]; then
+  if [ -n "$(git -C "$WT" status --porcelain 2>/dev/null)" ]; then
     RO_VIOLATION=1
-    RO_FILES="$(printf '%s\n' "$_ro_status" | sed 's/^...//' | tr '\n' ',')"
+    git -C "$WT" status --porcelain -z 2>/dev/null > "$WORK/.mutated" || true
   fi
 fi
 
-python3 - "$WORK" "$ROSTER" "$RO_VIOLATION" "$RO_FILES" "$RO_GUARDED" "${REVIEWERS[@]}" <<'PY'
-import json,os,sys
+ENS_RO_V="$RO_VIOLATION" ENS_RO_G="$RO_GUARDED" ENS_WIP="$WIP_REPLAYED" \
+python3 - "$WORK" "$ROSTER" "${REVIEWERS[@]}" <<'PY'
+import json,os,re,sys
 from collections import defaultdict
-work,roster=sys.argv[1],sys.argv[2]; ro_v=sys.argv[3]; ro_files=sys.argv[4]; ro_g=sys.argv[5]; eps=sys.argv[6:]
-rd=json.load(open(roster, encoding="utf-8"))
+work,roster=sys.argv[1],sys.argv[2]; eps=sys.argv[3:]
+ro_v=os.environ.get("ENS_RO_V","0"); ro_g=os.environ.get("ENS_RO_G","0"); wip=os.environ.get("ENS_WIP","none")
+try:
+    rd=json.load(open(roster, encoding="utf-8"))
+    if not isinstance(rd, dict): rd={}
+except Exception:
+    rd={}
 fam={e["id"]:e.get("family") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
-REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing"}
+REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing",125:"isolation-failed"}
+_ok=re.compile(r'^[A-Za-z0-9._@-]+$')
 reviewers=[]
 for ep in eps:
-    if os.sep in ep or ep in (".",".."):  # defense in depth; bash already validated
+    # defense in depth; bash already validated, but never build a path from a bad id
+    if (not _ok.match(ep)) or ep.startswith('-') or '..' in ep or os.sep in ep or ep in (".",".."):
         continue
     p=os.path.join(work,ep)
     rc=int(open(p+".rc").read().strip()) if os.path.exists(p+".rc") else 1
@@ -150,14 +189,13 @@ for ep in eps:
         rec["status"]="degraded"; rec["reason"]=REASON.get(rc,"failed")
     reviewers.append(rec)
 
-try:
-    min_q=int(rd.get("min_quorum",2))
-    if min_q < 1: min_q=2
-except Exception:
-    min_q=2
+mq=rd.get("min_quorum",2)
+min_q = mq if (isinstance(mq,int) and not isinstance(mq,bool) and mq>=1) else 2
+# cap so a config typo (e.g. 999) cannot make quorum permanently unreachable:
+# you cannot require more distinct families than there are reviewers
+if reviewers: min_q = min(min_q, len(reviewers))
 ok = [r for r in reviewers if r["status"]=="ok"]
-fams_ok=[]
-seen=set()
+fams_ok=[]; seen=set()
 for r in ok:
     f=r["family"]
     if f and f not in seen: seen.add(f); fams_ok.append(f)
@@ -167,11 +205,18 @@ for r in ok:
     if r["family"]: by[r["family"]].append(r["endpoint"])
 collisions=[{"family":k,"endpoints":v} for k,v in by.items() if len(v)>1]
 quorum_met = len(fams_ok) >= min_q
+mutated=[]
+mf=os.path.join(work,".mutated")
+if os.path.exists(mf):
+    raw=open(mf,encoding="utf-8",errors="replace").read()
+    for rec in raw.split("\0"):
+        if rec: mutated.append(rec[3:] if len(rec)>3 else rec)
 res={"reviewers":reviewers,"families_ok":fams_ok,"family_collisions":collisions,
      "quorum_required":min_q,"quorum_met":quorum_met,
      "read_only_violation": ro_v=="1",
      "read_only_guarded": ro_g=="1",
-     "mutated_files": [f for f in ro_files.split(",") if f]}
+     "wip_replayed": wip,
+     "mutated_files": mutated}
 print(json.dumps(res, indent=2))
 if ro_v=="1": sys.exit(5)
 sys.exit(0 if quorum_met else 4)
