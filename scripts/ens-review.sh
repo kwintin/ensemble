@@ -41,7 +41,7 @@ cleanup() {
   [ -n "$WORK" ] && rm -rf "$WORK"
   # prune AFTER the worktree dir is gone so a partial registration from a failed
   # `worktree add` (WT may be "") is also reaped, not just a clean removal
-  [ -n "$MAIN_REPO" ] && git -C "$MAIN_REPO" worktree prune >/dev/null 2>&1
+  [ -n "$MAIN_REPO" ] && git -C "$MAIN_REPO" worktree prune >/dev/null 2>&1 || true
   [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"
   return 0
 }
