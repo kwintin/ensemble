@@ -105,6 +105,9 @@ check "doctor missing roster -> exit 1" 1 "$rc"
 badj="$(mktemp)"; printf 'not json' > "$badj"
 out="$(ENSEMBLE_ROSTER="$badj" bash "$ROOT/scripts/doctor.sh" 2>/dev/null)"; rc=$?
 check "doctor invalid-json roster -> exit 1" 1 "$rc"; rm -f "$badj"
+badr2="$(mktemp)"; printf '%s' '{"endpoints":42}' > "$badr2"
+out="$(ENSEMBLE_ROSTER="$badr2" bash "$ROOT/scripts/doctor.sh" 2>/dev/null)"; rc=$?
+check "doctor non-list endpoints -> exit 1" 1 "$rc"; rm -f "$badr2"
 
 echo "== plugin contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
