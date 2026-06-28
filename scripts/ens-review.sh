@@ -50,6 +50,7 @@ wait
 
 python3 - "$WORK" "$ROSTER" "${REVIEWERS[@]}" <<'PY'
 import json,os,sys
+from collections import defaultdict
 work,roster=sys.argv[1],sys.argv[2]; eps=sys.argv[3:]
 rd=json.load(open(roster, encoding="utf-8"))
 fam={e["id"]:e.get("family") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
@@ -77,11 +78,10 @@ for r in ok:
     f=r["family"]
     if f and f not in seen: seen.add(f); fams_ok.append(f)
 # collisions: families with >1 ok reviewer
-from collections import defaultdict
 by=defaultdict(list)
 for r in ok:
     if r["family"]: by[r["family"]].append(r["endpoint"])
-collisions=[v for v in by.values() if len(v)>1]
+collisions=[{"family":k,"endpoints":v} for k,v in by.items() if len(v)>1]
 quorum_met = len(fams_ok) >= min_q
 res={"reviewers":reviewers,"families_ok":fams_ok,"family_collisions":collisions,
      "quorum_required":min_q,"quorum_met":quorum_met,

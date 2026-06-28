@@ -153,7 +153,7 @@ echo "== ens-review quorum =="
 out="$(printf hi | ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc=$?
 check "quorum met -> exit 0" 0 "$rc"
 check "quorum_met true" 0 0 '"quorum_met": true' "$out"
-check "family collision a/c reported" 0 0 'a@codex' "$out"
+check "family collision record present" 0 0 '"endpoints"' "$out"
 # only a@codex ok (1 family) with min_quorum 2 -> below quorum
 out2="$(printf hi | ENSEMBLE_ROSTER="$RM" ENS_TEST_MODES='b@codex=auth,c@codex=auth' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc2=$?
 check "below quorum -> exit 4" 4 "$rc2"
