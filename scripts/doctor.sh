@@ -3,10 +3,13 @@ set -uo pipefail
 ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPTS="$ROOT/scripts"; ROSTER="${ENSEMBLE_ROSTER:-$ROOT/roster.json}"
 source "$SCRIPTS/lib/timeout.sh"; source "$SCRIPTS/lib/roster.sh"
+[ -r "$ROSTER" ] || { echo "doctor: roster '$ROSTER' missing or unreadable" >&2; exit 1; }
 FAIL=0
 echo "multi-model-cc — doctor"
+SEEN=0
 while IFS= read -r ep; do
   [ -n "$ep" ] || continue
+  SEEN=1
   adapter="$(ens_endpoint_field "$ROSTER" "$ep" adapter)"
   [[ "$adapter" =~ ^[a-z0-9_-]+$ ]] || { echo "invalid adapter name '$adapter'" >&2; exit 1; }
   [ -f "$SCRIPTS/adapters/$adapter.sh" ] || { echo "no adapter '$adapter'" >&2; exit 1; }
@@ -19,5 +22,6 @@ while IFS= read -r ep; do
     printf '  %s: %s\n' "$ep" "$st"; FAIL=1
   fi
 done < <(ens_endpoints_enabled "$ROSTER")
+[ "$SEEN" -eq 1 ] || { echo "doctor: no enabled endpoints in roster '$ROSTER'" >&2; exit 1; }
 [ "$FAIL" -eq 0 ] && echo "All enabled endpoints healthy." || echo "Some endpoints need attention."
 exit "$FAIL"

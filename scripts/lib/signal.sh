@@ -3,6 +3,7 @@ ens_signal() { # STATUS REASON ENDPOINT
   local status="$1" reason="$2" ep="${3:-}" retry=""
   [ "$status" = "QUOTA_EXHAUSTED" ] && retry="--continue"
   reason="$(printf '%s' "$reason" | tr '\n\r\t' '   ' | tr -d '"\\' | cut -c1-200)"
+  ep="$(printf '%s' "$ep" | tr '\n\r\t' '   ' | tr -d '"\\' | cut -c1-100)"
   printf 'ENS_SIGNAL {"status":"%s","reason":"%s","endpoint":"%s","retry":"%s"}\n' \
     "$status" "$reason" "$ep" "$retry" >&2
 }

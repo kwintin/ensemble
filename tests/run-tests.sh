@@ -7,7 +7,7 @@ export PATH="$HERE/stubs:$PATH"   # stubs shadow real CLIs
 PASS=0; FAIL=0
 
 echo "== harness =="
-out="$(STUB_MODE=ok codex exec "hi" 2>/dev/null)"; rc=$?
+out="$(STUB_MODE=ok codex exec --sandbox read-only "hi" 2>/dev/null)"; rc=$?
 check "codex stub returns ok" 0 "$rc" "STUB_OK" "$out"
 
 echo "== timeout guard =="
@@ -16,6 +16,12 @@ ens_run_timeout 2 -- sh -c 'sleep 10'; rc=$?
 check "slow command killed -> 124" 124 "$rc"
 ens_run_timeout 5 -- sh -c 'echo fast'; rc=$?
 check "fast command passes -> 0" 0 "$rc"
+ens_run_timeout 1 -- sh -c 'trap "exit 0" TERM; sleep 10'; rc=$?
+check "timeout despite TERM-trap -> 124" 124 "$rc"
+ens_run_timeout abc -- echo hi >/dev/null 2>&1; rc=$?
+check "invalid timeout secs -> 2" 2 "$rc"
+crc=0; ens_run_timeout 5 -- sh -c 'kill -SEGV $$' >/dev/null 2>&1 || crc=$?
+check "crash signal not mislabeled timeout (>=128, not 124)" 1 "$([ "$crc" -ge 128 ] && [ "$crc" -ne 124 ] && echo 1 || echo 0)"
 
 echo "== signal classifier =="
 source "$ROOT/scripts/lib/signal.sh"
@@ -68,6 +74,8 @@ check "codex_health ok" 0 0 "ok" "$(STUB_MODE=ok codex_health)"
 check "codex_health auth" 0 0 "auth" "$(STUB_MODE=auth codex_health)"
 check "codex_list_models" 0 0 "gpt-5.5" "$(STUB_MODE=ok codex_list_models)"
 rm -f "$pf" "$of"
+sandt="$(mktemp)"; STUB_MODE=ok codex exec -o "$sandt" "p" >/dev/null 2>&1; rc=$?
+check "stub rejects missing --sandbox read-only -> 90" 90 "$rc"; rm -f "$sandt"
 
 echo "== model-cli review =="
 pf="$(mktemp)"; echo "find bugs" > "$pf"
@@ -79,12 +87,19 @@ check "auth failure -> exit 11" 11 "$rc"
 out="$(printf 'find bugs' | STUB_MODE=bad bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex - 2>/dev/null)"; rc=$?
 check "ERROR verdict -> exit 3" 3 "$rc"
 rm -f "$pf"
+out="$(printf x | STUB_MODE=notfound bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex - 2>/dev/null)"; rc=$?
+check "missing codex (127) -> exit 13" 13 "$rc"
+badr="$(mktemp)"; printf '%s' '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","effort":"bad effort","structured_output":"json","enabled":true}]}' > "$badr"
+out="$(printf x | ENSEMBLE_ROSTER="$badr" bash "$ROOT/scripts/model-cli.sh" review --endpoint x@codex - 2>/dev/null)"; rc=$?
+check "invalid effort -> exit 1" 1 "$rc"; rm -f "$badr"
 
 echo "== doctor =="
 out="$(STUB_MODE=ok bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
 check "doctor reports codex ok" 0 "$rc" "gpt-5.5@codex: ok" "$out"
 out="$(STUB_MODE=auth bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
 check "doctor flags auth -> exit 1" 1 "$rc" "auth" "$out"
+out="$(ENSEMBLE_ROSTER=/no/such/roster.json bash "$ROOT/scripts/doctor.sh" 2>/dev/null)"; rc=$?
+check "doctor missing roster -> exit 1" 1 "$rc"
 
 echo "== plugin contract =="
 python3 - "$ROOT" <<'PY'; rc=$?

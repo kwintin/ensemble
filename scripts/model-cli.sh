@@ -32,20 +32,26 @@ MODEL="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" model)"
 EFFORT="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" effort)"
 STRUCT="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" structured_output)"
 [ -n "$ADAPTER" ] || die "unknown endpoint '$ENDPOINT'"
+[[ "$MODEL"  =~ ^[A-Za-z0-9._-]+$ ]] || die "invalid model '$MODEL'"
+[[ "$EFFORT" =~ ^[A-Za-z]+$ ]]       || die "invalid effort '$EFFORT'"
+[[ "$STRUCT" =~ ^(json|sentinel)$ ]] || die "invalid structured_output '$STRUCT'"
 [[ "$ADAPTER" =~ ^[a-z0-9_-]+$ ]] || die "invalid adapter name '$ADAPTER'"
 [ -f "$SCRIPTS/adapters/$ADAPTER.sh" ] || die "no adapter '$ADAPTER'"
 source "$SCRIPTS/adapters/$ADAPTER.sh"
+declare -F "${ADAPTER}_review" >/dev/null || die "adapter '$ADAPTER' has no ${ADAPTER}_review"
 
 OUT="$(mktemp)"; ERR="$(mktemp)"
 trap 'rm -f "$OUT" "$ERR" "$STDIN_TMP"' EXIT
-"${ADAPTER}_review" "$ENDPOINT" "$MODEL" "$EFFORT" "$PROMPT_FILE" "$OUT" 2>"$ERR" && rc=0 || rc=$?
+"${ADAPTER}_review" "$ENDPOINT" "$MODEL" "$EFFORT" "$PROMPT_FILE" "$OUT" 2>"$ERR"; rc=$?
 
 if [ "$rc" -eq 124 ]; then ens_signal TIMEOUT "wall-clock guard" "$ENDPOINT"; exit 12; fi
-if [ "$rc" -ne 0 ]; then code="$(ens_classify "$rc" "$ERR" "$ENDPOINT")"; exit "$code"; fi
+if [ "$rc" -eq 127 ]; then ens_signal MISSING "executable not found" "$ENDPOINT"; exit 13; fi
+if [ "$rc" -eq 125 ]; then ens_signal FAILED "fork failed" "$ENDPOINT"; exit 2; fi
+if [ "$rc" -ne 0 ]; then code="$(ens_classify "$rc" "$ERR" "$ENDPOINT")"; exit "${code:-2}"; fi
 if [ ! -s "$OUT" ]; then echo "model-cli: empty output" >&2; exit 3; fi
 
 MODE="json"; [ "$STRUCT" = "sentinel" ] && MODE="sentinel"
 NORM="$(ens_normalize_verdict "$ENDPOINT" "$MODE" "$OUT")"
 printf '%s\n' "$NORM"
-printf '%s' "$NORM" | grep -q '"verdict": "ERROR"' && exit 3
+printf '%s' "$NORM" | python3 -c 'import sys,json; sys.exit(0 if json.load(sys.stdin).get("verdict")=="ERROR" else 1)' && exit 3
 exit 0

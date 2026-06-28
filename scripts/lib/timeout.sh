@@ -4,32 +4,43 @@
 ens_run_timeout() {
   local secs="$1"; shift
   [ "${1:-}" = "--" ] && shift
+  case "$secs" in ''|*[!0-9]*) echo "ens_run_timeout: invalid timeout '$secs'" >&2; return 2 ;; esac
+  [ "$secs" -gt 0 ] 2>/dev/null || { echo "ens_run_timeout: timeout must be > 0" >&2; return 2; }
   if command -v perl >/dev/null 2>&1; then
     perl -e '
       my $s = shift @ARGV;
       my $pid = fork();
-      defined $pid or do { warn "ens_run_timeout: fork failed\n"; exit 124 };
-      if ($pid == 0) { exec @ARGV or exit 127; }
-      local $SIG{ALRM} = sub { kill("TERM",$pid); sleep 1; kill("KILL",$pid); };
+      defined $pid or do { warn "ens_run_timeout: fork failed\n"; exit 125 };
+      if ($pid == 0) { setpgrp(0,0); exec @ARGV or exit 127; }
+      my $timed_out = 0;
+      local $SIG{ALRM} = sub { $timed_out = 1; kill("TERM", -$pid); sleep 1; kill("KILL", -$pid); };
       alarm $s;
       waitpid($pid, 0);
       my $rc = $?;
       alarm 0;
-      if ($rc & 127) { exit 124; }        # killed by our signal
+      exit 124 if $timed_out;
+      exit(128 + ($rc & 127)) if ($rc & 127);
       exit($rc >> 8);
     ' "$secs" "$@"
     return $?
   fi
-  # python fallback
   python3 - "$secs" "$@" <<'PY'
 import os,signal,subprocess,sys
 secs=float(sys.argv[1]); cmd=sys.argv[2:]
-p=subprocess.Popen(cmd)
-try: sys.exit(p.wait(timeout=secs))
+try:
+    p=subprocess.Popen(cmd, start_new_session=True)
+except FileNotFoundError:
+    sys.exit(127)
+try:
+    rc=p.wait(timeout=secs)
 except subprocess.TimeoutExpired:
-    p.terminate()
+    try: os.killpg(p.pid, signal.SIGTERM)
+    except ProcessLookupError: pass
     try: p.wait(1)
-    except subprocess.TimeoutExpired: p.kill()
+    except subprocess.TimeoutExpired:
+        try: os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError: pass
     sys.exit(124)
+sys.exit(128 + (-rc) if rc < 0 else rc)
 PY
 }
