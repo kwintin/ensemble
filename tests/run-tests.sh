@@ -176,4 +176,22 @@ check "reviewer mutation removed (probe gone)" 0 0 "1" "$([ ! -f "$rotmp2/ens_re
 check "violation still exit 5 with pre-existing untracked" 5 "$rc"
 rm -rf "$rotmp2"
 
+echo "== review surface contract =="
+python3 - "$ROOT" <<'PY'; rc=$?
+import os,sys
+root=sys.argv[1]; errs=[]
+for f in ("skills/multi-model-review/SKILL.md","commands/review.md"):
+    p=os.path.join(root,f)
+    if not os.path.isfile(p): errs.append("missing "+f); continue
+    t=open(p).read()
+    if not (t.startswith("---") and t.count("---")>=2): errs.append("no frontmatter: "+f)
+if "ens-review.sh" not in open(os.path.join(root,"skills/multi-model-review/SKILL.md")).read():
+    errs.append("skill does not reference ens-review.sh")
+if not os.access(os.path.join(root,"scripts/ens-review.sh"), os.X_OK):
+    errs.append("ens-review.sh not executable")
+if errs:
+    [print("  -",e) for e in errs]; sys.exit(1)
+PY
+check "review surface contract holds" 0 "$rc"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
