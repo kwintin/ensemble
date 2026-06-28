@@ -97,8 +97,13 @@ ens_opencode_fork_review() { # BIN MODEL PROMPT_FILE OUT_FILE
   raw="$(mktemp)"
   local _e; [[ $- == *e* ]] && _e=1 || _e=0
   set +e
-  # stdout (JSON events) -> raw file; stderr inherits fd2 (model-cli's ERR file)
-  ens_run_timeout 600 -- "$bin" run -m "$model" --format json -- "$prompt" >"$raw"
+  # stdout (JSON events) -> raw file; stderr inherits fd2 (model-cli's ERR file).
+  # stdin <- /dev/null: these agentic CLIs may read stdin when it is not a TTY; in a
+  # backgrounded dispatch subshell stdin is an inherited pipe that never EOFs, so the
+  # CLI would block forever ("Reading additional input from stdin..."). /dev/null gives
+  # an immediate EOF. (Do NOT move this into ens_run_timeout: codex_list_models pipes
+  # JSON-RPC into `codex app-server --stdio` via stdin.) See tests: adapter stdin guard.
+  ens_run_timeout 600 -- "$bin" run -m "$model" --format json -- "$prompt" >"$raw" </dev/null
   rc=$?
   ens_jsonl_text <"$raw" >"$of"
   rm -f "$raw"
@@ -117,8 +122,9 @@ ens_opencode_fork_run() { # BIN MODEL PROMPT_FILE DIR OUT_FILE
   raw="$(mktemp)"
   local _e; [[ $- == *e* ]] && _e=1 || _e=0
   set +e
+  # stdin <- /dev/null: never block on an inherited non-TTY stdin pipe (see _review above).
   ens_run_timeout 1200 -- "$bin" run -m "$model" --dir "$dir" --format json \
-    --dangerously-skip-permissions -- "$prompt" >"$raw"
+    --dangerously-skip-permissions -- "$prompt" >"$raw" </dev/null
   rc=$?
   ens_jsonl_text <"$raw" >"$of"
   rm -f "$raw"
@@ -135,8 +141,10 @@ ens_text_cli_review() { # OUT_FILE -- CLI ARGS...
   local rc
   local _e; [[ $- == *e* ]] && _e=1 || _e=0
   set +e
-  # default 600s (review); executors (write mode) raise it via ENS_CLI_TIMEOUT
-  ens_run_timeout "${ENS_CLI_TIMEOUT:-600}" -- "$@" >"$of"
+  # default 600s (review); executors (write mode) raise it via ENS_CLI_TIMEOUT.
+  # stdin <- /dev/null: agy/grok/vibe (and any text CLI) must never block reading an
+  # inherited non-TTY stdin pipe in a backgrounded dispatch (immediate EOF instead).
+  ens_run_timeout "${ENS_CLI_TIMEOUT:-600}" -- "$@" >"$of" </dev/null
   rc=$?
   [ "$_e" -eq 1 ] && set -e || true
   return "$rc"

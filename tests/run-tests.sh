@@ -82,6 +82,37 @@ rm -f "$pf" "$of"
 sandt="$(mktemp)"; STUB_MODE=ok codex exec -o "$sandt" "p" >/dev/null 2>&1; rc=$?
 check "stub rejects missing --sandbox read-only -> 90" 90 "$rc"; rm -f "$sandt"
 
+# --- adapter stdin guard: every review/run exec MUST redirect stdin from /dev/null ---
+# A non-interactive CLI that reads stdin will hang on an inherited non-TTY pipe in a
+# backgrounded dispatch ("Reading additional input from stdin..."). This contract test
+# fails if any review/run path drops the </dev/null redirect.
+echo "== adapter stdin guard =="
+python3 - "$ROOT" <<'PY'; rc=$?
+import re, sys, os
+root = sys.argv[1]
+targets = [
+    ("scripts/lib/adapter_common.sh", "ens_text_cli_review"),       # agy/grok/vibe review+run
+    ("scripts/lib/adapter_common.sh", "ens_opencode_fork_review"),  # opencode/kilo review
+    ("scripts/lib/adapter_common.sh", "ens_opencode_fork_run"),     # opencode/kilo run
+    ("scripts/adapters/codex.sh", "codex_review"),
+    ("scripts/adapters/codex.sh", "codex_run"),
+]
+errs = []
+for rel, fn in targets:
+    src = open(os.path.join(root, rel), encoding="utf-8").read()
+    m = re.search(r'(?m)^' + re.escape(fn) + r'\(\)\s*\{', src)
+    if not m:
+        errs.append("%s:%s not found" % (rel, fn)); continue
+    body = src[m.end():]
+    end = re.search(r'(?m)^\}', body)
+    body = body[:end.start()] if end else body
+    if "</dev/null" not in body and "0</dev/null" not in body:
+        errs.append("%s:%s does not redirect stdin from /dev/null (codex-hang risk)" % (rel, fn))
+if errs:
+    [print("  -", e) for e in errs]; sys.exit(1)
+PY
+check "every adapter review/run redirects stdin from /dev/null" 0 "$rc"
+
 # --- sentinel adapters (agy/grok/vibe/opencode/kilo): verdict via ===VERDICT=== block ---
 VIBECFG="$ROOT/tests/fixtures/vibe-config.toml"
 adapter_case() { # CLI ENDPOINT MODEL OK_VERDICT MODELS_SUBSTR  [extra env for health/list]
