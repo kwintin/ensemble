@@ -1,0 +1,10 @@
+{
+  "min_quorum": 2,
+  "endpoints": [
+    {"id":"a@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"low","role":"reviewer","structured_output":"json","enabled":true},
+    {"id":"b@codex","adapter":"codex","model":"gpt-5.5","family":"xai","effort":"low","role":"both","structured_output":"json","enabled":true},
+    {"id":"c@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"low","role":"reviewer","structured_output":"json","enabled":true},
+    {"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"deepseek","effort":"low","role":"executor","structured_output":"json","enabled":true},
+    {"id":"off@codex","adapter":"codex","model":"gpt-5.5","family":"mistral","effort":"low","role":"reviewer","structured_output":"json","enabled":false}
+  ]
+}

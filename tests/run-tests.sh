@@ -125,4 +125,11 @@ if errs:
 PY
 check "plugin contract holds" 0 "$rc"
 
+echo "== reviewer selection =="
+RM="$ROOT/tests/fixtures/roster-multi.json"
+sel="$(ens_reviewers "$RM" | tr '\n' ' ')"
+check "reviewers include role=reviewer and role=both" 0 0 "a@codex b@codex c@codex " "$sel"
+printf '%s' "$sel" | grep -q 'x@codex' && { echo "FAIL: executor-only x@codex selected as reviewer"; FAIL=$((FAIL+1)); } || { echo "ok: executor-only excluded"; PASS=$((PASS+1)); }
+printf '%s' "$sel" | grep -q 'off@codex' && { echo "FAIL: disabled off@codex selected"; FAIL=$((FAIL+1)); } || { echo "ok: disabled excluded"; PASS=$((PASS+1)); }
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
