@@ -11,6 +11,14 @@ agy_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
   ens_text_cli_review "$of" -- agy -p "$(ens_sentinel_prompt "$pf")" --model "$model" --sandbox
 }
 
+agy_run() { # ENDPOINT MODEL EFFORT PROMPT_FILE DIR OUT_FILE  (executor / write mode)
+  local ep="$1" model="$2" eff="$3" pf="$4" dir="$5" of="$6"
+  # agy has no --dir/--cwd flag, so run it cd'd into the worktree (OUT is absolute).
+  # --dangerously-skip-permissions auto-approves the executor's file edits.
+  ( cd "$dir" && ens_text_cli_review "$of" -- \
+      agy -p "$(ens_digest_prompt "$pf")" --model "$model" --dangerously-skip-permissions )
+}
+
 agy_health() { # -> ok | auth | missing
   command -v agy >/dev/null 2>&1 || { echo missing; return 0; }
   local out rc _e; [[ $- == *e* ]] && _e=1 || _e=0

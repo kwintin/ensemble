@@ -392,9 +392,18 @@ STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" run --endpoint mistral-medium-3.5
 check "run on reviewer-only endpoint -> exit 1" 1 "$rc"
 rc=0; STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" run --endpoint gpt-5.5@codex --prompt-file "$pf" --dir "$rundir" >/dev/null 2>&1 || rc=$?
 check "run auth -> exit 11" 11 "$rc"
-# the run stub must request workspace-write (read-only would be wrong for an executor)
-rc=0; STUB_MODE=ok codex exec --sandbox read-only -C "$rundir" "p" >/dev/null 2>&1 || rc=$?  # review-shaped, no run digest
 rm -rf "$rundir"; rm -f "$pf"
+# every executor adapter (write mode) -> digest + a file written inside --dir; auth -> 11
+for ep in gemini-3.5-flash@agy grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo; do
+  rd="$(mktemp -d)"; pf2="$(mktemp)"; echo "implement the unit" > "$pf2"
+  out="$(STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" run --endpoint "$ep" --prompt-file "$pf2" --dir "$rd" 2>/dev/null)"; rc=$?
+  check "model-cli run $ep -> rc 0" 0 "$rc"
+  check "model-cli run $ep emits digest" 0 0 '===DIGEST===' "$out"
+  check "model-cli run $ep wrote file in --dir" 0 0 "1" "$([ -f "$rd/ens_delegate_stub.txt" ] && echo 1 || echo 0)"
+  rc=0; STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" run --endpoint "$ep" --prompt-file "$pf2" --dir "$rd" >/dev/null 2>&1 || rc=$?
+  check "model-cli run $ep auth -> exit 11" 11 "$rc"
+  rm -rf "$rd"; rm -f "$pf2"
+done
 
 echo "== ens-delegate (worktree run/merge/discard) =="
 dg="$(mktemp -d)"; ( cd "$dg" && git init -q && printf 'base\n' > base.txt && git add base.txt && git -c user.email=t@t -c user.name=t commit -q -m init )

@@ -29,6 +29,20 @@ if [ "$_is_models" -eq 1 ]; then
   esac
 fi
 
+# RUN/write mode (executor): --permission-mode acceptEdits + --cwd DIR
+case " $* " in
+  *" --permission-mode acceptEdits "*)
+    _cwd=""; _pv=""; for _a in "$@"; do [ "$_pv" = "--cwd" ] && _cwd="$_a"; _pv="$_a"; done
+    case "${STUB_MODE:-ok}" in
+      auth)     echo "Error: please sign in" >&2; exit 1 ;;
+      quota)    echo "Error: quota exceeded" >&2; exit 1 ;;
+      notfound) exit 127 ;;
+      empty)    exit 0 ;;
+      *) [ -n "$_cwd" ] && printf 'stub executor was here\n' > "$_cwd/ens_delegate_stub.txt"
+         printf 'Implemented.\n===DIGEST===\nfiles: ens_delegate_stub.txt\ndecisions: - stub\ncontext: stub run\n===END===\n'
+         exit 0 ;;
+    esac ;;
+esac
 # Review mode: triggered when -p is present
 # grok -p "PROMPT" -m MODEL --permission-mode plan --effort EFF
 # lock the adapter's read-only invocation: grok must pass --permission-mode plan

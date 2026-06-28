@@ -6,6 +6,21 @@ case "$sub" in
     # opencode run -m MODEL --format json -- PROMPT
     # lock the adapter's invocation: must request the JSON event stream
     case " $* " in *" --format json "*) : ;; *) echo "STUB ERROR: opencode run must pass --format json" >&2; exit 90 ;; esac
+    # RUN/write mode (executor): --dangerously-skip-permissions + --dir DIR -> write a
+    # file in DIR and emit a JSONL text event carrying the ===DIGEST=== trailer.
+    case " $* " in
+      *" --dangerously-skip-permissions "*)
+        _dir=""; _pv=""; for _a in "$@"; do [ "$_pv" = "--dir" ] && _dir="$_a"; _pv="$_a"; done
+        case "${STUB_MODE:-ok}" in
+          quota)    echo "Error: quota exceeded for model" >&2; exit 1 ;;
+          auth)     echo "Error: please sign in to opencode" >&2; exit 1 ;;
+          notfound) exit 127 ;;
+          empty)    printf '{"type":"step_finish","tokens":0}\n'; exit 0 ;;
+          *) [ -n "$_dir" ] && printf 'stub executor was here\n' > "$_dir/ens_delegate_stub.txt"
+             printf '{"type":"text","part":{"text":"Implemented.\\n===DIGEST===\\nfiles: ens_delegate_stub.txt\\ndecisions: - stub\\ncontext: stub run\\n===END===\\n"}}\n'
+             exit 0 ;;
+        esac ;;
+    esac
     case "${STUB_MODE:-ok}" in
       quota)
         echo "Error: quota exceeded for model" >&2

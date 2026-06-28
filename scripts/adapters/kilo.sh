@@ -12,6 +12,11 @@ kilo_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
   ens_opencode_fork_review kilo "$model" "$pf" "$of"
 }
 
+kilo_run() { # ENDPOINT MODEL EFFORT PROMPT_FILE DIR OUT_FILE  (executor / write mode)
+  local ep="$1" model="$2" eff="$3" pf="$4" dir="$5" of="$6"
+  ens_opencode_fork_run kilo "$model" "$pf" "$dir" "$of"
+}
+
 kilo_health() { # -> ok | auth | missing
   command -v kilo >/dev/null 2>&1 || { echo missing; return 0; }
   local out rc

@@ -107,6 +107,25 @@ ens_opencode_fork_review() { # BIN MODEL PROMPT_FILE OUT_FILE
   return "$rc"
 }
 
+# Shared EXECUTOR (write-mode) run for OpenCode-fork CLIs (opencode, kilo): the
+# executor edits files within --dir DIR and ends with the ===DIGEST=== trailer.
+# Extracts the assistant text (incl. the digest) to OUT; preserves the CLI exit code.
+ens_opencode_fork_run() { # BIN MODEL PROMPT_FILE DIR OUT_FILE
+  local bin="$1" model="$2" pf="$3" dir="$4" of="$5"
+  local prompt raw rc
+  prompt="$(ens_digest_prompt "$pf")"
+  raw="$(mktemp)"
+  local _e; [[ $- == *e* ]] && _e=1 || _e=0
+  set +e
+  ens_run_timeout 1200 -- "$bin" run -m "$model" --dir "$dir" --format json \
+    --dangerously-skip-permissions -- "$prompt" >"$raw"
+  rc=$?
+  ens_jsonl_text <"$raw" >"$of"
+  rm -f "$raw"
+  [ "$_e" -eq 1 ] && set -e || true
+  return "$rc"
+}
+
 # Run a plain-text CLI under the timeout guard, capturing stdout (the assistant
 # response) to OUT and preserving the CLI's exit code. Pass the full argv.
 # Usage: ens_text_cli_review OUT_FILE -- <cli> <args...>

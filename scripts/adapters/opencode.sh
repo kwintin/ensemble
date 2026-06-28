@@ -13,6 +13,11 @@ opencode_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
   ens_opencode_fork_review opencode "$model" "$pf" "$of"
 }
 
+opencode_run() { # ENDPOINT MODEL EFFORT PROMPT_FILE DIR OUT_FILE  (executor / write mode)
+  local _ep="$1" model="$2" _eff="$3" pf="$4" dir="$5" of="$6"
+  ens_opencode_fork_run opencode "$model" "$pf" "$dir" "$of"
+}
+
 opencode_health() { # -> ok | auth | missing
   command -v opencode >/dev/null 2>&1 || { echo missing; return 0; }
   local out rc
