@@ -34,7 +34,11 @@ MODEL="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" model)"
 EFFORT="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" effort)"
 STRUCT="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" structured_output)"
 [ -n "$ADAPTER" ] || die "unknown endpoint '$ENDPOINT'"
-[[ "$MODEL"  =~ ^[A-Za-z0-9._-]+$ ]] || die "invalid model '$MODEL'"
+# model ids vary by transport: bare (gpt-5.5), slashed (opencode-go/deepseek-v4-pro,
+# kilo/z-ai/glm-5.2), or spaced display names (Gemini 3.5 Flash (Medium)). The model
+# is only ever passed as a single quoted argv element to the CLI (never re-parsed by a
+# shell, never used as a path), so this is a typo/sanity guard, not a security boundary.
+[[ "$MODEL" =~ ^[A-Za-z0-9\ ()._/+-]+$ ]] || die "invalid model '$MODEL'"
 [[ "$EFFORT" =~ ^(minimal|low|medium|high|xhigh)$ ]] || die "invalid effort '$EFFORT'"
 [[ "$STRUCT" =~ ^(json|sentinel)$ ]] || die "invalid structured_output '$STRUCT'"
 [[ "$ADAPTER" =~ ^[a-z0-9_-]+$ ]] || die "invalid adapter name '$ADAPTER'"

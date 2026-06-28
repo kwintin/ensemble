@@ -1,6 +1,6 @@
 {
-  "reviewers_default": ["gpt-5.5@codex"],
-  "min_quorum": 1,
+  "reviewers_default": ["gpt-5.5@codex", "grok-build@grok", "deepseek-v4-pro@opencode", "glm-5.2@kilo", "mistral-medium-3.5@vibe", "gemini-3.5-flash@agy"],
+  "min_quorum": 2,
   "endpoints": [
     {
       "id": "gpt-5.5@codex",
@@ -13,6 +13,71 @@
       "structured_output": "json",
       "strengths": ["repo-reasoning", "type-drift", "migrations"],
       "latency_tier": "slow",
+      "enabled": true
+    },
+    {
+      "id": "grok-build@grok",
+      "adapter": "grok",
+      "model": "grok-build",
+      "family": "xai",
+      "effort": "medium",
+      "role": "both",
+      "read_only_mode": "permission-mode-plan",
+      "structured_output": "sentinel",
+      "strengths": ["logic-correctness", "edge-cases", "reasoning"],
+      "latency_tier": "fast",
+      "enabled": true
+    },
+    {
+      "id": "deepseek-v4-pro@opencode",
+      "adapter": "opencode",
+      "model": "opencode-go/deepseek-v4-pro",
+      "family": "deepseek",
+      "effort": "medium",
+      "role": "both",
+      "read_only_mode": "directive+worktree",
+      "structured_output": "sentinel",
+      "strengths": ["payment-security", "injection-patterns"],
+      "latency_tier": "slow",
+      "enabled": true
+    },
+    {
+      "id": "glm-5.2@kilo",
+      "adapter": "kilo",
+      "model": "kilo/z-ai/glm-5.2",
+      "family": "zai",
+      "effort": "medium",
+      "role": "both",
+      "read_only_mode": "directive+worktree",
+      "structured_output": "sentinel",
+      "strengths": ["frontier-logic", "injection-security"],
+      "latency_tier": "fast",
+      "enabled": true
+    },
+    {
+      "id": "mistral-medium-3.5@vibe",
+      "adapter": "vibe",
+      "model": "mistral-medium-3.5",
+      "family": "mistral",
+      "effort": "medium",
+      "role": "both",
+      "read_only_mode": "max-turns-1",
+      "structured_output": "sentinel",
+      "strengths": ["security-crypto", "concise-verdicts"],
+      "latency_tier": "fast",
+      "enabled": true
+    },
+    {
+      "id": "gemini-3.5-flash@agy",
+      "adapter": "agy",
+      "model": "Gemini 3.5 Flash (Medium)",
+      "family": "google",
+      "effort": "medium",
+      "role": "both",
+      "read_only_mode": "directive+worktree",
+      "structured_output": "sentinel",
+      "strengths": ["pattern-consistency", "import-naming", "fast"],
+      "latency_tier": "fast",
       "enabled": true
     }
   ]

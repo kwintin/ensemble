@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Fake agy CLI for Tier-1 offline tests. Behavior controlled by $STUB_MODE.
+# Supports: models subcommand, -p/--print review mode.
+
+subcmd=""
+has_p=0
+for arg in "$@"; do
+  case "$arg" in
+    models) subcmd="models" ;;
+    -p|--print) has_p=1 ;;
+  esac
+done
+
+if [ "$subcmd" = "models" ]; then
+  case "${STUB_MODE:-ok}" in
+    auth)    echo "please sign in" >&2; exit 1 ;;
+    missing) exit 127 ;;
+    *)
+      printf 'Gemini 3.5 Flash (Medium)\n'
+      printf 'Gemini 3.5 Flash (Fast)\n'
+      printf 'Gemini 3.5 Flash (High)\n'
+      exit 0 ;;
+  esac
+fi
+
+if [ "$has_p" -eq 1 ]; then
+  case "${STUB_MODE:-ok}" in
+    ok)
+      printf 'Looks consistent.\n===VERDICT=== CHANGES\n===END===\n'
+      exit 0 ;;
+    empty)
+      exit 0 ;;
+    bad)
+      printf 'This review text has no sentinel whatsoever.\n'
+      exit 0 ;;
+    quota)
+      echo "Error: quota exceeded" >&2
+      exit 1 ;;
+    auth)
+      echo "Error: please sign in" >&2
+      exit 1 ;;
+    notfound)
+      exit 127 ;;
+    *)
+      printf 'Looks consistent.\n===VERDICT=== CHANGES\n===END===\n'
+      exit 0 ;;
+  esac
+fi
+
+# Default: unknown subcommand/args
+echo "STUB_OK"
+exit 0

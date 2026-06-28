@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Fake opencode CLI for tier-1 tests. Behavior controlled by $STUB_MODE (default: ok).
+sub="${1:-}"
+case "$sub" in
+  run)
+    # opencode run -m MODEL --format json -- PROMPT
+    # Locate the prompt (last non-flag argument after --)
+    case "${STUB_MODE:-ok}" in
+      quota)
+        echo "Error: quota exceeded for model" >&2
+        exit 1
+        ;;
+      auth)
+        echo "Error: please sign in to opencode" >&2
+        exit 1
+        ;;
+      notfound)
+        exit 127
+        ;;
+      bad)
+        # Emit a text event with no sentinel so verdict -> ERROR
+        printf '{"type":"text","part":{"text":"This is a review with no verdict sentinel.\\n"}}\n'
+        printf '{"type":"step_finish","tokens":42,"cost":0.001}\n'
+        exit 0
+        ;;
+      empty)
+        # Emit only non-text events (no text type at all)
+        printf '{"type":"step_finish","tokens":0,"cost":0.0}\n'
+        exit 0
+        ;;
+      *)
+        # ok (default): emit a well-formed JSONL event stream with an APPROVED sentinel.
+        # Use \n JSON escapes (not literal newlines) so each event is a valid single-line
+        # JSON object that ens_jsonl_text can parse with json.loads().
+        printf '{"type":"text","part":{"text":"Reviewed.\\n===VERDICT=== APPROVED\\n===END===\\n"}}\n'
+        printf '{"type":"step_finish","tokens":99,"cost":0.002}\n'
+        exit 0
+        ;;
+    esac
+    ;;
+  models)
+    # Print provider/model ids, one per line
+    case "${STUB_MODE:-ok}" in
+      auth)
+        echo "Error: please sign in to opencode" >&2
+        exit 1
+        ;;
+      notfound)
+        exit 127
+        ;;
+      *)
+        printf 'opencode-go/deepseek-v4-pro\n'
+        printf 'opencode-go/deepseek-v3\n'
+        printf 'opencode-go/deepseek-r1\n'
+        exit 0
+        ;;
+    esac
+    ;;
+  auth)
+    # opencode auth list -> credentials line
+    printf 'deepseek  logged-in  (opencode-go/deepseek-v4-pro)\n'
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac

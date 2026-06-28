@@ -1,0 +1,19 @@
+active_model = "mistral-medium-3.5"
+
+[[providers]]
+name = "mistral"
+api_base = "https://api.mistral.ai/v1"
+api_key = "fixture-key-not-real"
+api_style = "openai"
+
+[[models]]
+name = "mistral-vibe-cli-latest"
+provider = "mistral"
+alias = "mistral-medium-3.5"
+thinking = "high"
+
+[[models]]
+name = "devstral-small-latest"
+provider = "mistral"
+alias = "devstral-small"
+thinking = "off"

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Stub for `kilo` (OpenCode-fork CLI). Behavior driven by $STUB_MODE (default: ok).
+sub="${1:-}"
+case "$sub" in
+  run)
+    # kilo run -m MODEL --format json -- PROMPT
+    # Emit a JSONL text event stream with a sentinel verdict, then exit.
+    case "${STUB_MODE:-ok}" in
+      quota)    echo "Error: quota exceeded" >&2; exit 1 ;;
+      auth)     echo "Error: please sign in" >&2; exit 1 ;;
+      notfound) exit 127 ;;
+      bad)
+        # Emit text with NO sentinel so verdict parses as ERROR.
+        printf '{"type":"text","part":{"text":"no verdict here at all\\n"}}\n'
+        exit 0
+        ;;
+    esac
+    # Default (ok): emit a two-part text event stream with a sentinel.
+    # Each event must be a single JSON line (embedded newlines escaped as \n).
+    printf '{"type":"text","part":{"text":"kilo stub review: looks reasonable.\\n"}}\n'
+    printf '{"type":"text","part":{"text":"===VERDICT=== CHANGES\\n===END===\\n"}}\n'
+    exit 0
+    ;;
+  models)
+    case "${STUB_MODE:-ok}" in
+      auth) echo "Error: please sign in" >&2; exit 1 ;;
+    esac
+    printf 'kilo/z-ai/glm-5.2\nkilo/z-ai/glm-5.1\nkilo/z-ai/glm-4\n'
+    exit 0
+    ;;
+  *)
+    echo "STUB_OK"
+    exit 0
+    ;;
+esac

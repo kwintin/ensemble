@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Fake grok CLI for tier-1 tests. Behavior driven by $STUB_MODE (default: ok).
+# Subcommands: models, -p/--single (review mode)
+
+# Detect subcommand: "models" or review (has -p or --single)
+_has_p=0
+_is_models=0
+
+for arg in "$@"; do
+  case "$arg" in
+    models) _is_models=1 ;;
+    -p|--single) _has_p=1 ;;
+  esac
+done
+
+if [ "$_is_models" -eq 1 ]; then
+  case "${STUB_MODE:-ok}" in
+    auth)
+      echo "Error: not logged in. Please run: grok login" >&2
+      exit 1
+      ;;
+    missing)
+      exit 127
+      ;;
+    *)
+      printf 'You are logged in with grok.com.\n\nAvailable models:\n  - grok-build\n  * grok-composer-2.5-fast (default)\n'
+      exit 0
+      ;;
+  esac
+fi
+
+# Review mode: triggered when -p is present
+# Consume the -p argument value (not used, but we need to parse it)
+# grok -p "PROMPT" -m MODEL --permission-mode plan --effort EFF
+case "${STUB_MODE:-ok}" in
+  auth)
+    echo "Error: please sign in to grok.com" >&2
+    exit 1
+    ;;
+  quota)
+    echo "Error: quota exceeded for this model" >&2
+    exit 1
+    ;;
+  bad)
+    printf 'This is a review with no sentinel at all.\n'
+    exit 0
+    ;;
+  notfound)
+    exit 127
+    ;;
+  *)
+    # Default ok: emit a review with CHANGES sentinel
+    printf 'READ-ONLY REVIEW completed.\n\nThe code looks mostly fine but has a minor issue.\n\n===VERDICT=== CHANGES\n===END===\n'
+    exit 0
+    ;;
+esac

@@ -77,6 +77,41 @@ rm -f "$pf" "$of"
 sandt="$(mktemp)"; STUB_MODE=ok codex exec -o "$sandt" "p" >/dev/null 2>&1; rc=$?
 check "stub rejects missing --sandbox read-only -> 90" 90 "$rc"; rm -f "$sandt"
 
+# --- sentinel adapters (agy/grok/vibe/opencode/kilo): verdict via ===VERDICT=== block ---
+VIBECFG="$ROOT/tests/fixtures/vibe-config.toml"
+adapter_case() { # CLI ENDPOINT MODEL OK_VERDICT MODELS_SUBSTR  [extra env for health/list]
+  local cli="$1" ep="$2" model="$3" okv="$4" msub="$5"
+  echo "== $cli adapter =="
+  source "$ROOT/scripts/adapters/$cli.sh"
+  local pf of; pf="$(mktemp)"; of="$(mktemp)"; echo "review this diff" >"$pf"
+  STUB_MODE=ok "${cli}_review" "$ep" "$model" medium "$pf" "$of"; rc=$?
+  check "${cli}_review rc 0" 0 "$rc"
+  check "${cli}_review emitted sentinel" 0 0 '===VERDICT===' "$(cat "$of")"
+  check "${cli}_review verdict=$okv" 0 0 "\"verdict\": \"$okv\"" "$(ens_normalize_verdict "$ep" sentinel "$of")"
+  STUB_MODE=bad "${cli}_review" "$ep" "$model" medium "$pf" "$of" 2>/dev/null
+  check "${cli}_review bad -> ERROR" 0 0 '"verdict": "ERROR"' "$(ens_normalize_verdict "$ep" sentinel "$of")"
+  STUB_MODE=auth "${cli}_review" "$ep" "$model" medium "$pf" "$of" 2>/dev/null; rc=$?
+  check "${cli}_review auth -> non-zero rc" 0 "$([ "$rc" -ne 0 ] && echo 0 || echo 1)"
+  check "${cli}_list_models lists models" 0 0 "$msub" "$(ENS_VIBE_CONFIG="$VIBECFG" STUB_MODE=ok "${cli}_list_models")"
+  rm -f "$pf" "$of"
+}
+adapter_case agy  gemini-3.5-flash@agy     "Gemini 3.5 Flash (Medium)"  CHANGES  "Gemini"
+adapter_case grok grok-build@grok          grok-build                   CHANGES  "grok-build"
+adapter_case vibe mistral-medium-3.5@vibe  mistral-medium-3.5           CHANGES  "mistral-medium-3.5"
+adapter_case opencode deepseek-v4-pro@opencode opencode-go/deepseek-v4-pro APPROVED "deepseek-v4-pro"
+adapter_case kilo glm-5.2@kilo             kilo/z-ai/glm-5.2            CHANGES  "glm-5.2"
+# health: stub-driven for agy/grok/opencode/kilo; config-driven for vibe (ENS_VIBE_CONFIG)
+check "agy_health ok"  0 0 "ok"   "$(STUB_MODE=ok agy_health)"
+check "agy_health auth" 0 0 "auth" "$(STUB_MODE=auth agy_health)"
+check "grok_health ok" 0 0 "ok"   "$(STUB_MODE=ok grok_health)"
+check "grok_health auth" 0 0 "auth" "$(STUB_MODE=auth grok_health)"
+check "opencode_health ok" 0 0 "ok" "$(STUB_MODE=ok opencode_health)"
+check "opencode_health auth" 0 0 "auth" "$(STUB_MODE=auth opencode_health)"
+check "kilo_health ok" 0 0 "ok"   "$(STUB_MODE=ok kilo_health)"
+check "kilo_health auth" 0 0 "auth" "$(STUB_MODE=auth kilo_health)"
+check "vibe_health ok (config api_key)" 0 0 "ok" "$(ENS_VIBE_CONFIG="$VIBECFG" vibe_health)"
+check "vibe_health auth (no config)" 0 0 "auth" "$(ENS_VIBE_CONFIG=/no/such/vibe.toml vibe_health)"
+
 echo "== model-cli review =="
 pf="$(mktemp)"; echo "find bugs" > "$pf"
 out="$(STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex --prompt-file "$pf" 2>/dev/null)"; rc=$?
@@ -94,11 +129,22 @@ out="$(printf x | ENSEMBLE_ROSTER="$badr" bash "$ROOT/scripts/model-cli.sh" revi
 check "invalid effort -> exit 1" 1 "$rc"; rm -f "$badr"
 out="$(printf x | ENSEMBLE_ROSTER=/no/such/roster.json bash "$ROOT/scripts/model-cli.sh" review --endpoint x@codex - 2>/dev/null)"; rc=$?
 check "model-cli missing roster -> clean exit 1" 1 "$rc"
+# end-to-end through the real roster: each sentinel adapter dispatched by model-cli
+pf="$(mktemp)"; echo "find bugs" > "$pf"
+for ep in grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo mistral-medium-3.5@vibe gemini-3.5-flash@agy; do
+  out="$(STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" review --endpoint "$ep" --prompt-file "$pf" 2>/dev/null)"; rc=$?
+  check "model-cli review $ep -> rc 0" 0 "$rc"
+  check "model-cli review $ep stamps endpoint" 0 0 "\"endpoint\": \"$ep\"" "$out"
+done
+out="$(printf x | STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" review --endpoint grok-build@grok - 2>/dev/null)"; rc=$?
+check "model-cli sentinel auth -> exit 11" 11 "$rc"
+rm -f "$pf"
 
 echo "== doctor =="
-out="$(STUB_MODE=ok bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
+out="$(ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=ok bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
 check "doctor reports codex ok" 0 "$rc" "gpt-5.5@codex: ok" "$out"
-out="$(STUB_MODE=auth bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
+check "doctor reports all six endpoints ok" 0 "$rc" "glm-5.2@kilo: ok" "$out"
+out="$(ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=auth bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
 check "doctor flags auth -> exit 1" 1 "$rc" "auth" "$out"
 out="$(ENSEMBLE_ROSTER=/no/such/roster.json bash "$ROOT/scripts/doctor.sh" 2>/dev/null)"; rc=$?
 check "doctor missing roster -> exit 1" 1 "$rc"

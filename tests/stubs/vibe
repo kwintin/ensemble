@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Stub for vibe CLI. Controlled by $STUB_MODE (default: ok).
+# Usage patterns exercised:
+#   vibe -p "..." --max-turns 1 --trust --output text   -> review
+#   vibe --version                                       -> version string
+
+case "${1:-}" in
+  --version)
+    echo "vibe 0.0.0-stub"
+    exit 0
+    ;;
+  -p)
+    # Review mode: -p PROMPT --max-turns 1 --trust --output text
+    case "${STUB_MODE:-ok}" in
+      auth)
+        echo "Error: please authenticate with vibe" >&2
+        exit 1
+        ;;
+      quota)
+        echo "Error: quota exceeded" >&2
+        exit 1
+        ;;
+      bad)
+        # Exit 0 but emit no sentinel -> verdict will be ERROR
+        echo "This review has no verdict sentinel at all."
+        exit 0
+        ;;
+      notfound)
+        exit 127
+        ;;
+      ok|*)
+        model="${VIBE_ACTIVE_MODEL:-mistral-medium-3.5}"
+        cat <<EOF
+This is a stub review from vibe (model: $model).
+
+The code looks fine overall. No critical issues found.
+
+===VERDICT=== CHANGES
+===END===
+EOF
+        exit 0
+        ;;
+    esac
+    ;;
+  *)
+    echo "vibe-stub: unknown invocation: $*" >&2
+    exit 1
+    ;;
+esac
