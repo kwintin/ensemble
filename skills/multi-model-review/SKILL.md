@@ -15,7 +15,7 @@ Drive an independent multi-reviewer consensus loop over the ensemble core.
    "$CLAUDE_PLUGIN_ROOT/scripts/ens-review.sh" --prompt-file SPEC.md   # review a file
    ```
    Exit `0` = quorum met; `4` = below quorum (tell the user which reviewers are unavailable, suggest `/ensemble:doctor`); `5` = a reviewer tried to write files (reviewers run in a disposable worktree copy, so your real tree is never touched — treat that reviewer's findings as untrusted and see `mutated_files`).
-3. **Synthesize (your judgement).** Read the combined JSON. Build a consensus table (endpoint · verdict · key findings). A finding flagged by 2+ distinct families is high-confidence; a lone finding is assessed against the real code before acting; `family_collisions` are the same model — count them once. Resolve disagreement with evidence from the code, not a vote.
+3. **Synthesize (your judgement).** Read the combined JSON. Build a consensus table (endpoint · verdict · key findings). Structured reviewers (codex) carry detail in `findings[]`; sentinel reviewers (agy/grok/vibe/opencode/kilo) carry it as prose in the `review` field — read both. A finding flagged by 2+ distinct families is high-confidence; a lone finding is assessed against the real code before acting; `family_collisions` are the same model — count them once. Resolve disagreement with evidence from the code, not a vote.
 4. **Fix → re-review.** If issues: fix them, commit, then re-run the engine with `--reviewers` (a comma-separated list of endpoint ids) limited to the endpoints from the families that flagged issues. Stop when every OK family verdict is APPROVED, or after `max_rounds` (default 3).
 5. **Report.** Reconciled findings (most severe first) + the verdict.
 

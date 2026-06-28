@@ -7,6 +7,7 @@ source "$SCRIPTS/lib/timeout.sh"
 source "$SCRIPTS/lib/signal.sh"
 source "$SCRIPTS/lib/roster.sh"
 source "$SCRIPTS/lib/verdict.sh"
+source "$SCRIPTS/lib/adapter_common.sh"
 
 # exit 1 = usage error (outside the 0/2/3/10-13 runtime contract)
 die() { echo "model-cli: $*" >&2; exit 1; }

@@ -147,6 +147,7 @@ check "ok reviewer has status ok + a verdict" 0 0 '"status": "ok"' "$out"
 check "ok reviewer verdict extracted" 0 0 '"verdict": "CHANGES"' "$out"
 check "auth reviewer degraded with reason auth" 0 0 '"reason": "auth"' "$out"
 check "family stamped from roster" 0 0 '"family": "openai"' "$out"
+check "reviewer record carries review prose field" 0 0 '"review":' "$out"
 
 echo "== ens-review quorum =="
 # 3 reviewers, families openai/xai/openai, all ok -> distinct ok families {openai,xai}=2 >= min_quorum 2 -> met

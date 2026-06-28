@@ -184,11 +184,14 @@ for ep in eps:
         continue
     p=os.path.join(work,ep)
     rc=int(open(p+".rc").read().strip()) if os.path.exists(p+".rc") else 1
-    rec={"endpoint":ep,"family":fam.get(ep),"status":"ok","reason":None,"verdict":None,"findings":[]}
+    rec={"endpoint":ep,"family":fam.get(ep),"status":"ok","reason":None,"verdict":None,"findings":[],"review":""}
     if rc==0:
         try:
             v=json.load(open(p+".out", encoding="utf-8"))
             rec["verdict"]=v.get("verdict"); rec["findings"]=v.get("findings") or []
+            # surface the raw review prose (capped) so sentinel reviewers — which
+            # carry detail in text, not a findings[] array — contribute to synthesis
+            rec["review"]=(v.get("raw") or "")[:4000]
         except Exception:
             rec["status"]="degraded"; rec["reason"]="unparseable"
     else:
