@@ -132,4 +132,13 @@ check "reviewers include role=reviewer and role=both" 0 0 "a@codex b@codex c@cod
 printf '%s' "$sel" | grep -q 'x@codex' && { echo "FAIL: executor-only x@codex selected as reviewer"; FAIL=$((FAIL+1)); } || { echo "ok: executor-only excluded"; PASS=$((PASS+1)); }
 printf '%s' "$sel" | grep -q 'off@codex' && { echo "FAIL: disabled off@codex selected"; FAIL=$((FAIL+1)); } || { echo "ok: disabled excluded"; PASS=$((PASS+1)); }
 
+echo "== ens-review dispatch =="
+RM="$ROOT/tests/fixtures/roster-multi.json"
+pf="$(mktemp)"; echo "review this" > "$pf"
+# a@codex ok, b@codex auth-fail, c@codex ok  (set per-endpoint STUB via MODE map below)
+out="$(ENSEMBLE_ROSTER="$RM" ENS_TEST_MODES='b@codex=auth' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex,c@codex --prompt-file "$pf" 2>/dev/null)"; rc=$?
+check "dispatch returns JSON with all three reviewers" 0 0 '"endpoint": "b@codex"' "$out"
+check "a@codex ok rc captured" 0 0 '"endpoint": "a@codex"' "$out"
+rm -f "$pf"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
