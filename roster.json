@@ -74,7 +74,7 @@
       "family": "google",
       "effort": "medium",
       "role": "both",
-      "read_only_mode": "directive+worktree",
+      "read_only_mode": "sandbox+worktree",
       "structured_output": "sentinel",
       "strengths": ["pattern-consistency", "import-naming", "fast"],
       "latency_tier": "fast",

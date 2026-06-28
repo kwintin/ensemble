@@ -61,6 +61,11 @@ check "malformed json -> ERROR" 0 0 '"verdict": "ERROR"' "$out"
 printf 'no sentinel here\n' >"$rf"
 out="$(ens_normalize_verdict ep sentinel "$rf")"
 check "sentinel no match -> ERROR" 0 0 '"verdict": "ERROR"' "$out"
+# a model that echoes the instruction (APPROVED) before its real verdict (CHANGES)
+# must resolve to the LAST/closed verdict, not the first
+printf 'I will print ===VERDICT=== APPROVED or CHANGES at the end.\nFound a bug.\n===VERDICT=== CHANGES\n===END===\n' >"$rf"
+out="$(ens_normalize_verdict ep sentinel "$rf")"
+check "sentinel takes last verdict (echoed instruction ignored)" 0 0 '"verdict": "CHANGES"' "$out"
 rm -f "$rf"
 
 echo "== codex adapter =="
@@ -136,14 +141,32 @@ for ep in grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo mistral-medium-3
   check "model-cli review $ep -> rc 0" 0 "$rc"
   check "model-cli review $ep stamps endpoint" 0 0 "\"endpoint\": \"$ep\"" "$out"
 done
-out="$(printf x | STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" review --endpoint grok-build@grok - 2>/dev/null)"; rc=$?
-check "model-cli sentinel auth -> exit 11" 11 "$rc"
+# auth -> exit 11 for EVERY sentinel adapter (each stub's distinct auth string must
+# match ens_classify), so a per-adapter misclassification is caught
+for ep in grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo mistral-medium-3.5@vibe gemini-3.5-flash@agy; do
+  rc=0; printf x | STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" review --endpoint "$ep" - >/dev/null 2>&1 || rc=$?
+  check "model-cli $ep auth -> exit 11" 11 "$rc"
+done
+# empty fork output (only non-text events) -> exit 3
+rc=0; printf x | STUB_MODE=empty bash "$ROOT/scripts/model-cli.sh" review --endpoint deepseek-v4-pro@opencode - >/dev/null 2>&1 || rc=$?
+check "model-cli opencode empty -> exit 3" 3 "$rc"
+# widened model regex still rejects shell metacharacters
+badm="$(mktemp)"; printf '%s' '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"a;rm -rf b","effort":"medium","structured_output":"json","enabled":true}]}' > "$badm"
+rc=0; printf x | ENSEMBLE_ROSTER="$badm" bash "$ROOT/scripts/model-cli.sh" review --endpoint x@codex - >/dev/null 2>&1 || rc=$?
+check "model with shell metachars rejected -> exit 1" 1 "$rc"; rm -f "$badm"
+# read-only invocation is locked: each stub exits 90 if its guard flag is missing
+rc=0; STUB_MODE=ok grok -p hi -m m >/dev/null 2>&1 || rc=$?
+check "grok stub rejects missing --permission-mode plan -> 90" 90 "$rc"
+rc=0; STUB_MODE=ok opencode run -m m -- hi >/dev/null 2>&1 || rc=$?
+check "opencode stub rejects missing --format json -> 90" 90 "$rc"
 rm -f "$pf"
 
 echo "== doctor =="
 out="$(ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=ok bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
-check "doctor reports codex ok" 0 "$rc" "gpt-5.5@codex: ok" "$out"
-check "doctor reports all six endpoints ok" 0 "$rc" "glm-5.2@kilo: ok" "$out"
+check "doctor exit 0 (all healthy)" 0 "$rc"
+for ep in gpt-5.5@codex grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo mistral-medium-3.5@vibe gemini-3.5-flash@agy; do
+  check "doctor: $ep ok" 0 0 "$ep: ok" "$out"
+done
 out="$(ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=auth bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
 check "doctor flags auth -> exit 1" 1 "$rc" "auth" "$out"
 out="$(ENSEMBLE_ROSTER=/no/such/roster.json bash "$ROOT/scripts/doctor.sh" 2>/dev/null)"; rc=$?

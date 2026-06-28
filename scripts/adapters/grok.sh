@@ -14,26 +14,25 @@ grok_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
     max)                eff2=max   ;;
     *)                  eff2=high  ;;
   esac
-  local _e_was_set; [[ $- == *e* ]] && _e_was_set=1 || _e_was_set=0
-  set +e
   # NOTE: do NOT add 2>/dev/null here — stderr must reach model-cli's ERR file
   # so ens_classify can detect auth/quota errors on non-zero exit.
+  # (ens_text_cli_review handles the set +e / restore-e dance internally.)
   ens_text_cli_review "$of" -- \
     grok -p "$(ens_sentinel_prompt "$pf")" \
     -m "$model" \
     --permission-mode plan \
     --effort "$eff2"
-  local rc=$?
-  [ "$_e_was_set" -eq 1 ] && set -e || true
-  return $rc
 }
 
 grok_health() { # -> ok | auth | missing
   command -v grok >/dev/null 2>&1 || { echo missing; return 0; }
-  local out
-  out="$(ens_run_timeout 20 -- grok models 2>&1)"
-  local rc=$?
-  if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qi "logged in"; then
+  local out rc _e; [[ $- == *e* ]] && _e=1 || _e=0
+  set +e
+  out="$(ens_run_timeout 20 -- grok models 2>&1)"; rc=$?
+  [ "$_e" -eq 1 ] && set -e || true
+  # match the authenticated banner specifically ("You are logged in with ...");
+  # a plain "logged in" substring also appears in "not logged in"
+  if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qiE "logged in (with|as|to)"; then
     echo ok
   else
     echo auth

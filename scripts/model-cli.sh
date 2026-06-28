@@ -12,6 +12,13 @@ source "$SCRIPTS/lib/adapter_common.sh"
 # exit 1 = usage error (outside the 0/2/3/10-13 runtime contract)
 die() { echo "model-cli: $*" >&2; exit 1; }
 
+# ISOLATION BOUNDARY: this dispatcher runs the adapter in the CURRENT directory and
+# does NOT provide read-only/worktree isolation. The safe entry point is
+# ens-review.sh, which runs reviewers inside a disposable git worktree. Invoking
+# model-cli.sh review directly with a directive-only adapter (agy/opencode/kilo —
+# no native read-only flag) in a real repo lets a disobeying model write the tree.
+# Direct use is for the engine or trusted/scratch contexts only.
+
 verb="${1:-}"; shift || true
 [ "$verb" = "review" ] || die "only 'review' is implemented in this slice"
 

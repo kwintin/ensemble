@@ -11,6 +11,8 @@ case "${1:-}" in
     ;;
   -p)
     # Review mode: -p PROMPT --max-turns 1 --trust --output text
+    # lock the adapter's read-only invocation: vibe must pass --max-turns 1
+    case " $* " in *" --max-turns 1 "*) : ;; *) echo "STUB ERROR: vibe review must pass --max-turns 1" >&2; exit 90 ;; esac
     case "${STUB_MODE:-ok}" in
       auth)
         echo "Error: please authenticate with vibe" >&2

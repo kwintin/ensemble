@@ -10,6 +10,12 @@
 # TEXT to OUT_FILE, let the CLI's stderr flow through (model-cli captures it for
 # ens_classify auth/quota detection), and return the CLI's exit code (the timeout
 # guard maps a wall-clock kill to 124).
+#
+# KNOWN LIMITATION (ARG_MAX): the wrapped prompt (which includes the review
+# artifact, e.g. a diff) is passed as a single argv element. A very large artifact
+# (approaching the OS ARG_MAX, ~1MB on macOS) can fail with E2BIG. For oversized
+# reviews, scope the diff smaller. Follow-up: route via stdin / grok --prompt-file
+# for the CLIs that support it (vibe cannot — it ignores stdin in -p mode).
 
 [ -n "${_ENS_ADAPTER_COMMON:-}" ] && return 0
 _ENS_ADAPTER_COMMON=1
@@ -48,8 +54,11 @@ for line in sys.stdin:
     if not line: continue
     try: o=json.loads(line)
     except Exception: continue
+    if not isinstance(o, dict): continue           # valid JSON that is not an object
     if o.get("type")=="text":
-        sys.stdout.write((o.get("part") or {}).get("text",""))
+        part=o.get("part")
+        t=part.get("text") if isinstance(part, dict) else None
+        if t: sys.stdout.write(str(t))
 sys.stdout.write("\n")
 '
 }
@@ -67,9 +76,10 @@ ens_opencode_fork_review() { # BIN MODEL PROMPT_FILE OUT_FILE
   # stdout (JSON events) -> raw file; stderr inherits fd2 (model-cli's ERR file)
   ens_run_timeout 600 -- "$bin" run -m "$model" --format json -- "$prompt" >"$raw"
   rc=$?
-  [ "$_e" -eq 1 ] && set -e || true
   ens_jsonl_text <"$raw" >"$of"
   rm -f "$raw"
+  # restore errexit only after extraction+cleanup so a set -e caller still gets rc
+  [ "$_e" -eq 1 ] && set -e || true
   return "$rc"
 }
 

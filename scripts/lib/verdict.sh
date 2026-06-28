@@ -14,9 +14,12 @@ if mode=="json":
         if not isinstance(findings, list): findings=[]
     except Exception:
         verdict="ERROR"
-else:  # sentinel
-    m=re.search(r"===VERDICT===\s*(\w+)", raw)
-    if m: verdict=m.group(1).upper()
+else:  # sentinel — take the LAST verdict (a model may echo the instruction or
+       # quote an example before its real verdict); prefer one closed by ===END===
+    ms=re.findall(r"===VERDICT===\s*(\w+)\s*===END===", raw)
+    if not ms:
+        ms=re.findall(r"===VERDICT===\s*(\w+)", raw)
+    if ms: verdict=ms[-1].upper()
 if verdict not in ("APPROVED","CHANGES","ERROR"): verdict="ERROR"
 print(json.dumps({"endpoint":ep,"verdict":verdict,"findings":findings,"raw":raw}, indent=2))
 PY

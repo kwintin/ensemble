@@ -13,14 +13,11 @@ agy_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
 
 agy_health() { # -> ok | auth | missing
   command -v agy >/dev/null 2>&1 || { echo missing; return 0; }
-  local out
-  out="$(ens_run_timeout 20 -- agy models 2>/dev/null)"
-  local rc=$?
-  if [ "$rc" -eq 0 ] && [ -n "$out" ]; then
-    echo ok
-  else
-    echo auth
-  fi
+  local out rc _e; [[ $- == *e* ]] && _e=1 || _e=0
+  set +e
+  out="$(ens_run_timeout 20 -- agy models 2>/dev/null)"; rc=$?
+  [ "$_e" -eq 1 ] && set -e || true
+  if [ "$rc" -eq 0 ] && [ -n "$out" ]; then echo ok; else echo auth; fi
 }
 
 agy_list_models() { # -> model display names, one per line

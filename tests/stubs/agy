@@ -24,6 +24,8 @@ if [ "$subcmd" = "models" ]; then
 fi
 
 if [ "$has_p" -eq 1 ]; then
+  # lock the adapter's read-only invocation: agy must pass --sandbox
+  case " $* " in *" --sandbox "*) : ;; *) echo "STUB ERROR: agy review must pass --sandbox" >&2; exit 90 ;; esac
   case "${STUB_MODE:-ok}" in
     ok)
       printf 'Looks consistent.\n===VERDICT=== CHANGES\n===END===\n'
