@@ -82,4 +82,20 @@ check "doctor reports codex ok" 0 "$rc" "gpt-5.5@codex: ok" "$out"
 out="$(STUB_MODE=auth bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
 check "doctor flags auth -> exit 1" 1 "$rc" "auth" "$out"
 
+echo "== plugin contract =="
+python3 - "$ROOT" <<'PY'; rc=$?
+import json,os,sys,stat
+root=sys.argv[1]; errs=[]
+pj=json.load(open(os.path.join(root,".claude-plugin","plugin.json")))
+if pj.get("name")!="ensemble": errs.append("plugin name != ensemble")
+if not pj.get("version"): errs.append("missing version")
+for s in ("scripts/model-cli.sh","scripts/doctor.sh","tests/run-tests.sh","tests/stubs/codex"):
+    p=os.path.join(root,s)
+    if not os.path.isfile(p): errs.append("missing "+s)
+    elif not (os.stat(p).st_mode & stat.S_IXUSR): errs.append("not executable: "+s)
+if errs:
+    [print("  -",e) for e in errs]; sys.exit(1)
+PY
+check "plugin contract holds" 0 "$rc"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
