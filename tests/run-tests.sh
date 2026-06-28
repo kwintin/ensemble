@@ -116,6 +116,8 @@ check "kilo_health ok" 0 0 "ok"   "$(STUB_MODE=ok kilo_health)"
 check "kilo_health auth" 0 0 "auth" "$(STUB_MODE=auth kilo_health)"
 check "vibe_health ok (config api_key)" 0 0 "ok" "$(ENS_VIBE_CONFIG="$VIBECFG" vibe_health)"
 check "vibe_health auth (no config)" 0 0 "auth" "$(ENS_VIBE_CONFIG=/no/such/vibe.toml vibe_health)"
+wscfg="$(mktemp)"; printf '[[providers]]\nname = "mistral"\napi_key = "   "\n' > "$wscfg"
+check "vibe_health auth (whitespace-only api_key)" 0 0 "auth" "$(ENS_VIBE_CONFIG="$wscfg" vibe_health)"; rm -f "$wscfg"
 
 echo "== model-cli review =="
 pf="$(mktemp)"; echo "find bugs" > "$pf"
