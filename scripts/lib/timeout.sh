@@ -13,10 +13,15 @@ ens_run_timeout() {
   if   command -v timeout  >/dev/null 2>&1; then to=timeout
   elif command -v gtimeout >/dev/null 2>&1; then to=gtimeout
   fi
-  if [ -n "$to" ]; then
-    "$to" "$secs" "$@"   # plain form is portable across GNU/non-GNU timeout; returns 124 on timeout
-    return $?
+  if [ -n "$to" ] && "$to" --help 2>/dev/null | grep -q -- '--kill-after'; then
+    # GNU coreutils timeout: HARD guard (TERM, then KILL after --kill-after).
+    "$to" --kill-after=10 "$secs" "$@"
+    local rc=$?
+    [ "$rc" -eq 137 ] && rc=124   # SIGKILL after timeout -> our timeout code
+    return $rc
   fi
+  # No GNU timeout with --kill-after available -> use the hardened perl/python
+  # fallback below (it force-kills via its own process group).
   # --- portable fallback (no coreutils timeout available) ---
   if command -v perl >/dev/null 2>&1; then
     perl -e '

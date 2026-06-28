@@ -4,7 +4,7 @@ ens_normalize_verdict() { # ENDPOINT MODE RAW_FILE
   python3 - "$1" "$2" "$3" <<'PY'
 import json,re,sys
 ep,mode,raw_path=sys.argv[1],sys.argv[2],sys.argv[3]
-raw=open(raw_path, errors='replace').read()
+raw=open(raw_path, encoding="utf-8", errors='replace').read()
 verdict="ERROR"; findings=[]
 if mode=="json":
     try:

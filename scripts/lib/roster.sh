@@ -7,7 +7,9 @@ try:
     d=json.load(open(r, encoding="utf-8"))
 except (OSError, json.JSONDecodeError) as ex:
     sys.stderr.write("roster: cannot read %s: %s\n" % (r, ex)); sys.exit(1)
-for e in d.get("endpoints",[]):
+if not isinstance(d, dict):
+    sys.stderr.write("roster: malformed (expected a JSON object)\n"); sys.exit(1)
+for e in (d.get("endpoints") or []):
     if e.get("id")==eid:
         v=e.get(field,""); print(v if not isinstance(v,(list,dict)) else json.dumps(v)); break
 PY
@@ -19,7 +21,9 @@ try:
     d=json.load(open(sys.argv[1], encoding="utf-8"))
 except (OSError, json.JSONDecodeError) as ex:
     sys.stderr.write("roster: cannot read %s: %s\n" % (sys.argv[1], ex)); sys.exit(1)
-for e in d.get("endpoints",[]):
+if not isinstance(d, dict):
+    sys.stderr.write("roster: malformed (expected a JSON object)\n"); sys.exit(1)
+for e in (d.get("endpoints") or []):
     if e.get("enabled"):
         i=e.get("id")
         if i: print(i)
