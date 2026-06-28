@@ -37,13 +37,19 @@ _rm_tmp_parent() { # remove the mktemp parent of a worktree, only under known te
 # THIS repo on an ensemble/delegate-* branch — prevents a typo'd --worktree from
 # force-removing an unrelated worktree / deleting the user's real branch. Echoes the branch.
 _delegate_branch() { # WT  -> echoes the branch iff WT is a delegate worktree of this repo
-  local wt="$1" br reg
+  local wt="$1" br wtp regp _matched=0
   [ -n "$wt" ] && [ -d "$wt" ] || die "worktree '$wt' does not exist"
   git -C "$wt" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "'$wt' is not a git worktree"
-  # it must be a worktree REGISTERED with this repo (not some unrelated checkout)
-  reg="$(git -C "$MAIN_REPO" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')"
-  printf '%s\n' "$reg" | grep -qxF "$(cd "$wt" && pwd -P)" \
-    || die "'$wt' is not a registered worktree of $MAIN_REPO"
+  # it must be a worktree REGISTERED with this repo (not some unrelated checkout).
+  # Resolve BOTH sides via `cd && pwd -P` so symlinked temp roots (macOS /var/folders
+  # -> /private/var/folders) match symmetrically (a portable comparison, not env-luck).
+  wtp="$(cd "$wt" && pwd -P)" || die "cannot resolve worktree path '$wt'"
+  while IFS= read -r regp; do
+    [ -n "$regp" ] || continue
+    regp="$(cd "$regp" 2>/dev/null && pwd -P)" || continue
+    [ "$regp" = "$wtp" ] && { _matched=1; break; }
+  done < <(git -C "$MAIN_REPO" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+  [ "$_matched" = 1 ] || die "'$wt' is not a registered worktree of $MAIN_REPO"
   br="$(_wt_branch "$wt")"
   case "$br" in
     ensemble/delegate-*) printf '%s' "$br" ;;
