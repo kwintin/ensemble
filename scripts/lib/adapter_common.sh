@@ -43,6 +43,30 @@ followed by:
 FTR
 }
 
+# Wrap a delegation TASK with an executor directive + the ===DIGEST=== trailer
+# instruction (delegate engine, design spec §7.5). The executor writes files in
+# its current worktree and ends with a machine-readable digest.
+ens_digest_prompt() { # PROMPT_FILE
+  local pf="$1"
+  cat <<'HDR'
+You are an autonomous coding executor working INSIDE an isolated git worktree (your current working directory). Implement the task below by CREATING/EDITING files in this directory yourself — do not merely describe the changes. Keep changes scoped to the task. If a repo-root AGENTS.md exists, follow it.
+
+--- TASK ---
+HDR
+  cat "$pf"
+  cat <<'FTR'
+
+--- END TASK ---
+
+When finished, end your output with EXACTLY this trailer and nothing after it:
+===DIGEST===
+files: <comma-separated paths you created or modified>
+decisions: <1-3 short bullets on the key choices you made>
+context: <one short paragraph the verifier/next-step needs; keep bulky detail in the files>
+===END===
+FTR
+}
+
 # Extract assistant text from an OpenCode-fork JSON event stream (stdin -> stdout).
 # Each line is a JSON event; assistant prose is in events of type "text" at
 # .part.text. Malformed lines are skipped.

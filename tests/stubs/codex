@@ -3,10 +3,29 @@
 sub="${1:-}"
 case "$sub" in
   exec)
-    # find -o OUTFILE and write a schema-conforming verdict there
+    # parse -o OUTFILE (review) and -C DIR (run working root)
     _all_args=" $* "
-    out=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { out="$2"; }; shift; done
-    case "$_all_args" in *" --sandbox read-only "*) : ;; *) echo "STUB ERROR: codex_review must pass --sandbox read-only" >&2; exit 90 ;; esac
+    out=""; cdir=""; _prev=""
+    for _a in "$@"; do case "$_prev" in -o) out="$_a" ;; -C|--cd) cdir="$_a" ;; esac; _prev="$_a"; done
+    case "$_all_args" in
+      *" --sandbox read-only "*) _mode=review ;;
+      *" --sandbox workspace-write "*) _mode=run ;;
+      *) echo "STUB ERROR: codex must pass --sandbox read-only (review) or workspace-write (run)" >&2; exit 90 ;;
+    esac
+    if [ "$_mode" = run ]; then
+      # executor / write mode: write a file in -C DIR, emit a ===DIGEST=== to stdout
+      case "${STUB_MODE:-ok}" in
+        quota)    echo "Error: quota exceeded" >&2; exit 1 ;;
+        auth)     echo "Error: please sign in" >&2; exit 1 ;;
+        notfound) exit 127 ;;
+        empty)    exit 0 ;;
+        run_noop) printf 'Nothing to do.\n===DIGEST===\nfiles: \ndecisions: none\ncontext: no-op\n===END===\n'; exit 0 ;;
+        *) [ -n "$cdir" ] && printf 'stub executor was here\n' > "$cdir/ens_delegate_stub.txt"
+           printf 'Implemented the task.\n===DIGEST===\nfiles: ens_delegate_stub.txt\ndecisions: - wrote the stub file\ncontext: stub executor run\n===END===\n'
+           exit 0 ;;
+      esac
+    fi
+    # review mode (read-only)
     case "${STUB_MODE:-ok}" in
       quota) echo "Error: quota exceeded" >&2; exit 1 ;;
       auth)  echo "Error: please sign in" >&2; exit 1 ;;

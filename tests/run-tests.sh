@@ -373,6 +373,49 @@ check "council kept generic word 'build'" 0 0 "build" "$(cat "$dbg/peer.txt" 2>/
 check "council kept generic word 'pro'" 0 0 "pro" "$(cat "$dbg/peer.txt" 2>/dev/null)"
 rm -rf "$cot3" "$dbg"
 
+echo "== ens_executors selection =="
+ex="$(ens_executors "$ROOT/tests/fixtures/roster-multi.json" | cut -f1 | tr '\n' ' ')"
+check "ens_executors lists role=both (b@codex)" 0 0 "b@codex" "$ex"
+check "ens_executors lists role=executor (x@codex)" 0 0 "x@codex" "$ex"
+check "ens_executors excludes reviewer-only (a@codex)" 0 "$(printf '%s' "$ex" | grep -qw 'a@codex' && echo 1 || echo 0)"
+check "ens_executors excludes disabled (off@codex)" 0 "$(printf '%s' "$ex" | grep -q 'off@codex' && echo 1 || echo 0)"
+
+echo "== model-cli run (executor write mode) =="
+rundir="$(mktemp -d)"; pf="$(mktemp)"; echo "create a thing" > "$pf"
+out="$(STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" run --endpoint gpt-5.5@codex --prompt-file "$pf" --dir "$rundir" 2>/dev/null)"; rc=$?
+check "model-cli run rc 0" 0 "$rc"
+check "model-cli run emits digest" 0 0 '===DIGEST===' "$out"
+check "executor wrote a file in --dir" 0 0 "1" "$([ -f "$rundir/ens_delegate_stub.txt" ] && echo 1 || echo 0)"
+STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" run --endpoint gpt-5.5@codex --prompt-file "$pf" >/dev/null 2>&1; rc=$?
+check "run without --dir -> exit 1" 1 "$rc"
+STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" run --endpoint mistral-medium-3.5@vibe --prompt-file "$pf" --dir "$rundir" >/dev/null 2>&1; rc=$?
+check "run on reviewer-only endpoint -> exit 1" 1 "$rc"
+rc=0; STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" run --endpoint gpt-5.5@codex --prompt-file "$pf" --dir "$rundir" >/dev/null 2>&1 || rc=$?
+check "run auth -> exit 11" 11 "$rc"
+# the run stub must request workspace-write (read-only would be wrong for an executor)
+rc=0; STUB_MODE=ok codex exec --sandbox read-only -C "$rundir" "p" >/dev/null 2>&1 || rc=$?  # review-shaped, no run digest
+rm -rf "$rundir"; rm -f "$pf"
+
+echo "== ens-delegate (worktree run/merge/discard) =="
+dg="$(mktemp -d)"; ( cd "$dg" && git init -q && printf 'base\n' > base.txt && git add base.txt && git -c user.email=t@t -c user.name=t commit -q -m init )
+cp "$RM" "$dg/roster.json"; pf="$(mktemp)"; echo "implement the unit" > "$pf"
+out="$(cd "$dg" && STUB_MODE=ok ENSEMBLE_ROSTER="$dg/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint x@codex --prompt-file "$pf" 2>/dev/null)"; rc=$?
+check "delegate run rc 0" 0 "$rc"
+check "delegate run emits digest" 0 0 '===DIGEST===' "$out"
+check "delegate run lists files_changed" 0 0 'ens_delegate_stub.txt' "$out"
+WT="$(printf '%s' "$out" | python3 -c 'import json,sys;print(json.load(sys.stdin)["worktree"])')"
+check "delegate worktree left in place for verify" 0 0 "1" "$([ -d "$WT" ] && echo 1 || echo 0)"
+check "executor write isolated to worktree (not main repo)" 0 0 "1" "$([ ! -f "$dg/ens_delegate_stub.txt" ] && echo 1 || echo 0)"
+( cd "$dg" && STUB_MODE=ok ENSEMBLE_ROSTER="$dg/roster.json" bash "$ROOT/scripts/ens-delegate.sh" merge --worktree "$WT" >/dev/null 2>&1 )
+check "delegate merge brought file into main repo" 0 0 "1" "$([ -f "$dg/ens_delegate_stub.txt" ] && echo 1 || echo 0)"
+check "delegate merge removed the worktree" 0 0 "1" "$([ ! -d "$WT" ] && echo 1 || echo 0)"
+out2="$(cd "$dg" && STUB_MODE=ok ENSEMBLE_ROSTER="$dg/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint x@codex --prompt-file "$pf" 2>/dev/null)"
+WT2="$(printf '%s' "$out2" | python3 -c 'import json,sys;print(json.load(sys.stdin)["worktree"])')"
+( cd "$dg" && bash "$ROOT/scripts/ens-delegate.sh" discard --worktree "$WT2" >/dev/null 2>&1 )
+check "delegate discard removed the worktree" 0 0 "1" "$([ ! -d "$WT2" ] && echo 1 || echo 0)"
+check "delegate discard left no uncommitted tracked changes" 0 "$(cd "$dg" && git status --porcelain | grep -v '^??' | grep -q . && echo 1 || echo 0)"
+rm -rf "$dg"; rm -f "$pf"
+
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
 import os,sys

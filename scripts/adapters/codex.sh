@@ -35,6 +35,24 @@ codex_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
   return $rc
 }
 
+codex_run() { # ENDPOINT MODEL EFFORT PROMPT_FILE DIR OUT_FILE  (executor / write mode)
+  local ep="$1" model="$2" eff="$3" pf="$4" dir="$5" of="$6"
+  local prompt; prompt="$(ens_digest_prompt "$pf")"
+  local _e; [[ $- == *e* ]] && _e=1 || _e=0
+  set +e
+  # --sandbox workspace-write: OS-enforced — the executor may edit files only within
+  # the worktree (-C DIR). The freeform response + ===DIGEST=== trailer go to stdout
+  # -> OUT; stderr inherits fd2 (model-cli's ERR) for auth/quota classification.
+  ens_run_timeout 1200 -- codex exec \
+    --sandbox workspace-write --ephemeral \
+    -c "model_reasoning_effort=$eff" -m "$model" \
+    -C "$dir" \
+    "$prompt" </dev/null >"$of"
+  local rc=$?
+  [ "$_e" -eq 1 ] && set -e || true
+  return $rc
+}
+
 codex_health() { # -> ok | auth | missing
   command -v codex >/dev/null 2>&1 || { echo missing; return 0; }
   local j; j="$(ens_run_timeout 20 -- codex doctor --json 2>/dev/null)"

@@ -60,7 +60,7 @@
       "model": "mistral-medium-3.5",
       "family": "mistral",
       "effort": "medium",
-      "role": "both",
+      "role": "reviewer",
       "read_only_mode": "max-turns-1",
       "structured_output": "sentinel",
       "strengths": ["security-crypto", "concise-verdicts"],
