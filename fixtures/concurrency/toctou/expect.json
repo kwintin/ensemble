@@ -1,0 +1,1 @@
+{"category":"concurrency","verdict":"CHANGES","must_match":["race|toctou|time-of-check|check-?then-?act|atomic|exist_ok|try/except|FileExists"],"must_match_mode":"all","note":"check-then-act TOCTOU race; use atomic create (exist_ok / EAFP)"}

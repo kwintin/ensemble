@@ -1,0 +1,1 @@
+{"category":"bugs","verdict":"CHANGES","must_match":["identity (comparison|check|operator)|compares? .*identity|`?is`? (operator |)(instead of|rather than|not) ==|use ==|should (be|use) ==|== instead of|value (equality|comparison)"],"must_match_mode":"all","note":"`is` compares identity, not value; use =="}

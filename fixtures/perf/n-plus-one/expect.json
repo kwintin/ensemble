@@ -1,0 +1,1 @@
+{"category":"perf","verdict":"CHANGES","must_match":["n\\+1|n plus one|per-?(order|iteration|row)|one query (per|for each)|batch|single query|join|repeated quer"],"must_match_mode":"all","note":"N+1 query pattern; batch into one query/join"}

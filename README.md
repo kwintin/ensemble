@@ -15,8 +15,9 @@ synthesis, and verification.
 
 ---
 
-> **Status:** early — design spec approved, implementation phasing underway.
-> See [`docs/specs/`](docs/specs/) for the full design.
+> **Status:** v1 feature-complete — review, council, delegate, setup, calibrate, and
+> doctor are all implemented and multi-model-reviewed. Private / pre-release; not yet
+> battle-tested in real conditions. See [`docs/specs/`](docs/specs/) for the full design.
 
 ## What it does
 
@@ -45,14 +46,76 @@ The other models are inputs: independent reviewers or strength-matched
 executors, kept anonymous and equal. Claude reconciles their voices and owns
 correctness — the standing figure to their reaching hands.
 
-## Status & roadmap
+## Requirements
 
-| Phase | Scope |
-|------|-------|
-| 0 | Shared core — unified dispatcher, per-CLI adapters, roster, doctor, job registry, hermetic test harness |
-| 1 | Review engine — hardened consensus loop + council mode, setup wizard, gating |
-| 2 | Delegate engine — strength routing, worktree isolation, clean-state verification |
-| 3 | Polish — docs, marketplace manifest, cross-platform notes |
+- **Claude Code** (the host).
+- **bash**, **python3** (3.8+), and **git** on `PATH` — the engines are bash + small
+  embedded Python; isolation uses `git worktree`.
+- **At least one** of the six supported model CLIs, installed and authenticated. The
+  roster adapts to whatever you have — you do not need all six:
+
+  | CLI | Transport / model | Roles |
+  |-----|-------------------|-------|
+  | `codex` | OpenAI Codex | reviewer + executor (OS-sandboxed read-only / workspace-write) |
+  | `agy` | Antigravity (Gemini) | reviewer + executor |
+  | `grok` | xAI Grok | reviewer + executor |
+  | `opencode` | OpenCode (DeepSeek, …) | reviewer + executor |
+  | `kilo` | Kilo (GLM, …) | reviewer + executor |
+  | `vibe` | Mistral | reviewer only |
+
+- **Optional:** GNU coreutils `timeout`/`gtimeout` for the robust wall-clock guard;
+  without it the engines fall back to a portable perl/python guard (macOS:
+  `brew install coreutils`).
+
+## Install
+
+```bash
+# add this repo as a plugin marketplace, then install the plugin
+/plugin marketplace add kwintin/ensemble      # or a local path to this checkout
+/plugin install ensemble@ensemble-dev
+```
+
+Then configure your roster from the CLIs you actually have:
+
+```
+/ensemble:setup      # detect installed + authenticated CLIs, pick models, write the roster
+/ensemble:doctor     # verify endpoints are healthy (quorum is by model family)
+```
+
+The roster persists to `$CLAUDE_PLUGIN_DATA/roster.json` (survives plugin updates); a
+shipped default lets the plugin work before setup.
+
+## Commands
+
+| Command | What it does |
+|---------|--------------|
+| `/ensemble:review [--council] [--reviewers a,b,c] [scope]` | Multi-model consensus review of a diff/spec/plan/doc; `--council` runs a de-biased two-round anonymized review with Claude as chairman. |
+| `/ensemble:delegate` | Route a well-scoped unit to the strength-matched executor; run it write-enabled in an isolated worktree; verify against a contract before merging. |
+| `/ensemble:calibrate [--endpoint id] [--category cat]` | Measure each reviewer's per-category hit-rate on a fixture corpus and propose grounded `category:score` strengths. |
+| `/ensemble:setup` | Detect installed/authenticated CLIs and write a personalized roster. |
+| `/ensemble:doctor` | Health-check the roster endpoints and report family/quorum coverage. |
+
+## Portability
+
+Developed and tested on **macOS (Darwin)** and written to run on **Linux** too. Known
+platform considerations the code already handles:
+
+- **`timeout(1)`** — not present by default on macOS; the wall-clock guard falls back to
+  a portable perl/python implementation (and prefers `gtimeout` if installed).
+- **`mktemp`** — BSD (macOS) `mktemp -d` ignores `$TMPDIR`; temp dirs are created with an
+  explicit `"${TMPDIR:-/tmp}/…XXXXXX"` template so behavior is consistent on both.
+- **`date`** — uses `date -u +%Y-%m-%d` (portable across BSD and GNU).
+- No reliance on GNU-only flags in the hot paths; JSON handling is done in Python, not
+  `sed`/`awk`, to avoid shell-portability traps.
+
+## Roadmap
+
+| Phase | Scope | Status |
+|------|-------|--------|
+| 0 | Shared core — dispatcher, per-CLI adapters, roster, doctor, hermetic test harness | ✅ |
+| 1 | Review engine — hardened consensus loop + council mode, setup wizard, gating hooks | ✅ |
+| 2 | Delegate engine — strength routing, worktree isolation, clean-state verification | ✅ |
+| 3 | Calibration + packaging — fixture-grounded strengths, marketplace manifest, cross-platform notes | ✅ |
 
 Configuration is roster-driven, so the plugin adapts to whatever CLIs you have
 installed rather than hardcoding a fixed set.

@@ -1,0 +1,22 @@
+{
+  "name": "ensemble-dev",
+  "description": "Development marketplace for the ensemble plugin — multi-model review + strength-routed delegation across heterogeneous AI CLIs.",
+  "owner": {
+    "name": "Quentin Millpass",
+    "email": "quentin@millpass.ca"
+  },
+  "plugins": [
+    {
+      "name": "ensemble",
+      "description": "Multi-model review + strength-routed delegation across heterogeneous AI CLIs (codex, agy, grok, opencode, kilo, vibe). Consensus review, council mode, delegated implementation, and calibration — Claude conducts, the models reach.",
+      "version": "0.1.0",
+      "source": "./",
+      "author": {
+        "name": "Quentin Millpass",
+        "email": "quentin@millpass.ca"
+      },
+      "homepage": "https://github.com/kwintin/ensemble",
+      "keywords": ["multi-model", "code-review", "consensus", "delegation", "ai-cli", "orchestration", "calibration"]
+    }
+  ]
+}

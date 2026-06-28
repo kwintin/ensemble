@@ -1,5 +1,20 @@
 {
   "name": "ensemble",
-  "version": "0.0.1",
-  "description": "Multi-model review + strength-routed delegation across heterogeneous AI CLIs."
+  "version": "0.1.0",
+  "description": "Multi-model review + strength-routed delegation across heterogeneous AI CLIs. Claude conducts an ensemble of independent model endpoints (codex, agy, grok, opencode, kilo, vibe) for consensus review, council mode, delegated implementation, and calibration.",
+  "author": {
+    "name": "Quentin Millpass",
+    "email": "quentin@millpass.ca"
+  },
+  "homepage": "https://github.com/kwintin/ensemble",
+  "repository": "https://github.com/kwintin/ensemble",
+  "keywords": [
+    "multi-model",
+    "code-review",
+    "consensus",
+    "delegation",
+    "ai-cli",
+    "orchestration",
+    "calibration"
+  ]
 }

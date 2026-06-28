@@ -633,6 +633,45 @@ if errs:
 PY
 check "hooks surface contract holds" 0 "$rc"
 
+echo "== plugin manifest + command surface =="
+python3 - "$ROOT" <<'PY'; rc=$?
+import json, os, sys
+root = sys.argv[1]; errs = []
+try:
+    p = json.load(open(os.path.join(root, ".claude-plugin/plugin.json")))
+    for k in ("name","version","description"):
+        if not p.get(k): errs.append("plugin.json missing "+k)
+    if p.get("name") != "ensemble": errs.append("plugin.json name != ensemble")
+except Exception as e: errs.append("plugin.json: %s" % e)
+try:
+    m = json.load(open(os.path.join(root, ".claude-plugin/marketplace.json")))
+    pl = m.get("plugins") or []
+    if not any(isinstance(x, dict) and x.get("name") == "ensemble" for x in pl):
+        errs.append("marketplace.json does not list the ensemble plugin")
+except Exception as e: errs.append("marketplace.json: %s" % e)
+# every shipped command exists and references an existing skill or script
+for cmd in ("review","delegate","calibrate","setup","doctor"):
+    cf = os.path.join(root, "commands", cmd + ".md")
+    if not os.path.exists(cf): errs.append("missing command: commands/%s.md" % cmd); continue
+    body = open(cf, encoding="utf-8").read()
+    if ("skill" not in body.lower()) and ("scripts/" not in body):
+        errs.append("commands/%s.md references neither a skill nor a script" % cmd)
+# any /ensemble:<cmd> referenced in skills/commands must have a command file
+import re
+referenced = set()
+for d in ("commands","skills"):
+    for dp,_,fs in os.walk(os.path.join(root,d)):
+        for f in fs:
+            if f.endswith(".md"):
+                for mm in re.findall(r'/ensemble:([a-z]+)', open(os.path.join(dp,f),encoding="utf-8").read()):
+                    referenced.add(mm)
+for cmd in referenced:
+    if not os.path.exists(os.path.join(root,"commands",cmd+".md")):
+        errs.append("/ensemble:%s is referenced but commands/%s.md does not exist" % (cmd,cmd))
+if errs: [print("  -",e) for e in errs]; sys.exit(1)
+PY
+check "plugin manifest + command surface valid" 0 "$rc"
+
 source "$HERE/calib-tests.sh"
 
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
