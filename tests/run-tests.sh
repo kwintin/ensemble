@@ -158,4 +158,14 @@ check "family collision record present" 0 0 '"endpoints"' "$out"
 out2="$(printf hi | ENSEMBLE_ROSTER="$RM" ENS_TEST_MODES='b@codex=auth,c@codex=auth' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc2=$?
 check "below quorum -> exit 4" 4 "$rc2"
 
+echo "== ens-review read-only =="
+rotmp="$(mktemp -d)"; ( cd "$rotmp" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RM" "$rotmp/roster.json"
+out="$(cd "$rotmp" && printf hi | ENSEMBLE_ROSTER="$rotmp/roster.json" ENS_TEST_MODES='a@codex=mutate' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "read-only violation -> exit 5" 5 "$rc"
+check "violation flagged in json" 0 0 '"read_only_violation": true' "$out"
+clean="$(cd "$rotmp" && git status --porcelain)"
+check "mutation reverted (tree clean after)" 0 0 "" "$clean"
+rm -rf "$rotmp"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

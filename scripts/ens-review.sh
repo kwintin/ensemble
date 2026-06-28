@@ -39,6 +39,8 @@ test_mode_for() { # ENDPOINT -> mode or empty
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"; [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"' EXIT
 
+RO_BEFORE="$(git status --porcelain 2>/dev/null || true)"
+
 # dispatch each reviewer in the background
 # NOTE: endpoint ids are used as temp-file names; the roster schema is name@adapter (no '/').
 for ep in "${REVIEWERS[@]}"; do
@@ -48,10 +50,23 @@ for ep in "${REVIEWERS[@]}"; do
 done
 wait
 
-python3 - "$WORK" "$ROSTER" "${REVIEWERS[@]}" <<'PY'
+RO_AFTER="$(git status --porcelain 2>/dev/null || true)"
+RO_VIOLATION=0; RO_FILES=""
+if [ "$RO_BEFORE" != "$RO_AFTER" ]; then
+  RO_VIOLATION=1
+  # changed/new porcelain lines present after but not before; strip the 3-char status prefix
+  RO_FILES="$(comm -13 <(printf '%s\n' "$RO_BEFORE" | sort) <(printf '%s\n' "$RO_AFTER" | sort) | sed 's/^...//' | tr '\n' ',')"
+  git checkout -- . 2>/dev/null || true   # revert tracked modifications
+  # remove ONLY newly-appeared untracked files (preserve the user's pre-existing untracked files)
+  printf '%s\n' "$RO_AFTER" | grep '^?? ' | sed 's/^?? //' | while IFS= read -r f; do
+    printf '%s\n' "$RO_BEFORE" | grep -qxF "?? $f" || rm -f "$f"
+  done
+fi
+
+python3 - "$WORK" "$ROSTER" "$RO_VIOLATION" "$RO_FILES" "${REVIEWERS[@]}" <<'PY'
 import json,os,sys
 from collections import defaultdict
-work,roster=sys.argv[1],sys.argv[2]; eps=sys.argv[3:]
+work,roster=sys.argv[1],sys.argv[2]; ro_v=sys.argv[3]; ro_files=sys.argv[4]; eps=sys.argv[5:]
 rd=json.load(open(roster, encoding="utf-8"))
 fam={e["id"]:e.get("family") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
 REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing"}
@@ -85,8 +100,10 @@ collisions=[{"family":k,"endpoints":v} for k,v in by.items() if len(v)>1]
 quorum_met = len(fams_ok) >= min_q
 res={"reviewers":reviewers,"families_ok":fams_ok,"family_collisions":collisions,
      "quorum_required":min_q,"quorum_met":quorum_met,
-     "read_only_violation":False,"mutated_files":[]}
+     "read_only_violation": ro_v=="1",
+     "mutated_files": [f for f in ro_files.split(",") if f]}
 print(json.dumps(res, indent=2))
+if ro_v=="1": sys.exit(5)
 sys.exit(0 if quorum_met else 4)
 PY
 exit $?
