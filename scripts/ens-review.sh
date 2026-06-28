@@ -7,12 +7,12 @@ source "$SCRIPTS/lib/roster.sh"
 
 die() { echo "ens-review: $*" >&2; exit 1; }
 
-PROMPT_FILE=""; SUBSET=""
+PROMPT_FILE=""; SUBSET=""; STDIN_TMP=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --reviewers) SUBSET="$2"; shift 2 ;;
     --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
-    -) PROMPT_FILE="$(mktemp)"; cat > "$PROMPT_FILE"; shift ;;
+    -) PROMPT_FILE="$(mktemp)"; cat > "$PROMPT_FILE"; STDIN_TMP="$PROMPT_FILE"; shift ;;
     *) die "unknown arg '$1'" ;;
   esac
 done
@@ -29,6 +29,7 @@ fi
 # test-only: parse ENS_TEST_MODES "id=mode,id=mode" -> per-endpoint STUB_MODE
 test_mode_for() { # ENDPOINT -> mode or empty
   local ep="$1" pair
+  local -a _pairs
   [ -n "${ENS_TEST_MODES:-}" ] || return 0
   IFS=',' read -r -a _pairs <<< "$ENS_TEST_MODES"
   for pair in "${_pairs[@]}"; do
@@ -36,9 +37,10 @@ test_mode_for() { # ENDPOINT -> mode or empty
   done
 }
 
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"; [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"' EXIT
 
 # dispatch each reviewer in the background
+# NOTE: endpoint ids are used as temp-file names; the roster schema is name@adapter (no '/').
 for ep in "${REVIEWERS[@]}"; do
   mode="$(test_mode_for "$ep")"
   ( STUB_MODE="${mode:-ok}" "$SCRIPTS/model-cli.sh" review --endpoint "$ep" --prompt-file "$PROMPT_FILE" \
