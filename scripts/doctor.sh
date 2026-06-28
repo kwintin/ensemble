@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -uo pipefail
 ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-SCRIPTS="$ROOT/scripts"; ROSTER="${ENSEMBLE_ROSTER:-$ROOT/roster.json}"
+SCRIPTS="$ROOT/scripts"
+source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped)
 source "$SCRIPTS/lib/timeout.sh"; source "$SCRIPTS/lib/roster.sh"
 [ -r "$ROSTER" ] || { echo "doctor: roster '$ROSTER' missing or unreadable" >&2; exit 1; }
 if ! command -v timeout >/dev/null 2>&1 && ! command -v gtimeout >/dev/null 2>&1; then

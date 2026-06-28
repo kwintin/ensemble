@@ -479,4 +479,52 @@ if errs:
 PY
 check "delegate surface contract holds" 0 "$rc"
 
+echo "== ens-setup: family normalization =="
+check "family deepseek (router id)" 0 0 "deepseek" "$(bash "$ROOT/scripts/ens-setup.sh" family 'opencode-go/deepseek-v4-pro')"
+check "family google (agy display name)" 0 0 "google" "$(bash "$ROOT/scripts/ens-setup.sh" family 'Gemini 3.5 Flash (Medium)')"
+check "family zai (kilo glm)" 0 0 "zai" "$(bash "$ROOT/scripts/ens-setup.sh" family 'kilo/z-ai/glm-5.2')"
+check "family openai (bare gpt)" 0 0 "openai" "$(bash "$ROOT/scripts/ens-setup.sh" family 'gpt-5.5')"
+check "family anthropic (cross-router)" 0 0 "anthropic" "$(bash "$ROOT/scripts/ens-setup.sh" family 'cloudflare-ai-gateway/anthropic/claude-opus-4-6')"
+check "family unknown (no vendor token)" 0 0 "unknown" "$(bash "$ROOT/scripts/ens-setup.sh" family 'zzz-private-model-9')"
+
+echo "== ens-setup: defaults + validate =="
+check "defaults seeds strengths" 0 0 "repo-reasoning" "$(bash "$ROOT/scripts/ens-setup.sh" defaults 'gpt-5.5')"
+bash "$ROOT/scripts/ens-setup.sh" validate "$ROOT/roster.json" >/dev/null 2>&1; check "validate accepts shipped roster -> 0" 0 "$?"
+badr="$(mktemp)"; printf '%s' '{"endpoints":[{"id":"m@vibe","adapter":"vibe","model":"mistral-medium-3.5","family":"mistral","effort":"medium","role":"executor","structured_output":"sentinel","enabled":true}]}' > "$badr"
+bash "$ROOT/scripts/ens-setup.sh" validate "$badr" >/dev/null 2>&1; check "validate rejects vibe-as-executor -> 1" 1 "$?"
+badr2="$(mktemp)"; printf '%s' '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"bogus","role":"reviewer","structured_output":"json","enabled":true}]}' > "$badr2"
+bash "$ROOT/scripts/ens-setup.sh" validate "$badr2" >/dev/null 2>&1; check "validate rejects bad effort -> 1" 1 "$?"
+rm -f "$badr" "$badr2"
+
+echo "== ens-setup: detect (stubs) =="
+det="$(PATH="$ROOT/tests/stubs:$PATH" ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=ok bash "$ROOT/scripts/ens-setup.sh" detect)"
+check "detect lists all six transports" 0 0 '"adapter": "vibe"' "$det"
+check "detect marks codex executor_capable" 0 0 '"executor_capable": true' "$det"
+check "detect marks vibe reviewer-only" 0 0 '"default_role": "reviewer"' "$det"
+
+echo "== roster path resolution =="
+( ENSEMBLE_ROSTER=/x/y.json; unset CLAUDE_PLUGIN_DATA; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "/x/y.json" ] ) && { echo "ok: ENSEMBLE_ROSTER wins"; PASS=$((PASS+1)); } || { echo "FAIL: ENSEMBLE_ROSTER precedence"; FAIL=$((FAIL+1)); }
+pdata="$(mktemp -d)"; cp "$ROOT/roster.json" "$pdata/roster.json"
+( unset ENSEMBLE_ROSTER; CLAUDE_PLUGIN_DATA="$pdata"; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$pdata/roster.json" ] ) && { echo "ok: CLAUDE_PLUGIN_DATA preferred"; PASS=$((PASS+1)); } || { echo "FAIL: CLAUDE_PLUGIN_DATA precedence"; FAIL=$((FAIL+1)); }
+( unset ENSEMBLE_ROSTER; unset CLAUDE_PLUGIN_DATA; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$ROOT/roster.json" ] ) && { echo "ok: falls back to shipped roster"; PASS=$((PASS+1)); } || { echo "FAIL: shipped fallback"; FAIL=$((FAIL+1)); }
+rm -rf "$pdata"
+
+echo "== setup surface contract =="
+python3 - "$ROOT" <<'PY'; rc=$?
+import os,sys,json
+root=sys.argv[1]; errs=[]
+for f in ("skills/ensemble-setup/SKILL.md","commands/setup.md"):
+    p=os.path.join(root,f)
+    if not os.path.isfile(p): errs.append("missing "+f); continue
+    t=open(p).read()
+    if not (t.startswith("---") and t.count("---")>=2): errs.append("no frontmatter: "+f)
+    if "ens-setup.sh" not in t: errs.append(f+" does not reference ens-setup.sh")
+if not os.access(os.path.join(root,"scripts/ens-setup.sh"), os.X_OK): errs.append("ens-setup.sh not executable")
+try: json.load(open(os.path.join(root,"data/model-defaults.json")))
+except Exception as e: errs.append("model-defaults.json invalid: %s"%e)
+if errs:
+    [print("  -",e) for e in errs]; sys.exit(1)
+PY
+check "setup surface contract holds" 0 "$rc"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

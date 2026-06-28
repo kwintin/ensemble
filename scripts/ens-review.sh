@@ -2,7 +2,7 @@
 set -uo pipefail
 ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPTS="$ROOT/scripts"
-ROSTER="${ENSEMBLE_ROSTER:-$ROOT/roster.json}"
+source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped)
 source "$SCRIPTS/lib/roster.sh"
 
 die() { echo "ens-review: $*" >&2; exit 1; }
