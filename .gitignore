@@ -1,6 +1,8 @@
 # Scratch / local
 scratch/
 *.log
+.superpowers/
 
 # macOS
 .DS_Store
+**/.DS_Store

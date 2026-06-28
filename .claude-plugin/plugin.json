@@ -1,0 +1,5 @@
+{
+  "name": "ensemble",
+  "version": "0.0.1",
+  "description": "Multi-model review + strength-routed delegation across heterogeneous AI CLIs."
+}
