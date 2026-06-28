@@ -332,6 +332,31 @@ check "uncommitted tracked WIP replayed into review copy" 0 0 '"wip_replayed": "
 check "WIP review run reaches quorum -> exit 0" 0 "$rc"
 check "WIP review left user tree untouched" 0 0 "v2-uncommitted" "$(cat "$ro9/a.txt")"; rm -rf "$ro9"
 
+echo "== ens-council (two-round de-biased review) =="
+cot="$(mktemp -d)"; ( cd "$cot" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RM" "$cot/roster.json"
+# happy path: 3 ok reviewers -> round1 + anonymized peer round2 + de-anon map
+out="$(cd "$cot" && printf 'review this' | ENSEMBLE_ROSTER="$cot/roster.json" bash "$ROOT/scripts/ens-council.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc=$?
+check "council exit 0" 0 "$rc"
+check "council mode tag" 0 0 '"mode": "council"' "$out"
+check "council emits round1" 0 0 '"round1"' "$out"
+check "council anon map labels reviewers" 0 0 '"A":' "$out"
+r2state="$(printf '%s' "$out" | python3 -c 'import sys,json;print("present" if json.load(sys.stdin)["round2"] else "null")')"
+check "council convened a peer round (round2 present)" 0 0 "present" "$r2state"
+nr2="$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(len(d["round2"]["reviewers"]) if d["round2"] else 0)')"
+check "council peer round re-ran the OK reviewers (3)" 0 0 "3" "$nr2"
+# below quorum: only 1 OK reviewer -> council not convened, exit 4, round2 null
+out2="$(cd "$cot" && printf 'review' | ENSEMBLE_ROSTER="$cot/roster.json" ENS_TEST_MODES='b@codex=auth,c@codex=auth' bash "$ROOT/scripts/ens-council.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc2=$?
+check "council below 2 reviewers -> exit 4" 4 "$rc2"
+r2n2="$(printf '%s' "$out2" | python3 -c 'import sys,json;print("null" if json.load(sys.stdin)["round2"] is None else "present")')"
+check "council not convened -> round2 null" 0 0 "null" "$r2n2"
+rm -rf "$cot"
+# a reviewer mutation in round 1 propagates read-only violation -> exit 5
+cot2="$(mktemp -d)"; ( cd "$cot2" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RM" "$cot2/roster.json"
+out3="$(cd "$cot2" && printf 'review' | ENSEMBLE_ROSTER="$cot2/roster.json" ENS_TEST_MODES='a@codex=mutate' bash "$ROOT/scripts/ens-council.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc3=$?
+check "council read-only violation -> exit 5" 5 "$rc3"; rm -rf "$cot2"
+
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
 import os,sys
@@ -341,10 +366,14 @@ for f in ("skills/multi-model-review/SKILL.md","commands/review.md"):
     if not os.path.isfile(p): errs.append("missing "+f); continue
     t=open(p).read()
     if not (t.startswith("---") and t.count("---")>=2): errs.append("no frontmatter: "+f)
-if "ens-review.sh" not in open(os.path.join(root,"skills/multi-model-review/SKILL.md")).read():
+skill_txt=open(os.path.join(root,"skills/multi-model-review/SKILL.md")).read()
+if "ens-review.sh" not in skill_txt:
     errs.append("skill does not reference ens-review.sh")
-if not os.access(os.path.join(root,"scripts/ens-review.sh"), os.X_OK):
-    errs.append("ens-review.sh not executable")
+if "ens-council.sh" not in skill_txt:
+    errs.append("skill does not document council mode (ens-council.sh)")
+for s in ("scripts/ens-review.sh","scripts/ens-council.sh"):
+    if not os.access(os.path.join(root,s), os.X_OK):
+        errs.append(s+" not executable")
 if errs:
     [print("  -",e) for e in errs]; sys.exit(1)
 PY

@@ -24,6 +24,17 @@ Drive an independent multi-reviewer consensus loop over the ensemble core.
 - Never re-review without fixing first. Commit between rounds so reviewers see current state.
 - A reviewer that degraded (auth/quota/timeout) is skipped while quorum holds — do not block on it.
 
+## Council mode (`--council`)
+For high-stakes review (spec sign-off, auth/billing/crypto), run a **de-biased two-round** review instead of the single pass. ~2× the calls.
+
+1. **Convene.** Run the council engine (it does round-1, anonymizes the reviews, runs a peer round, and returns both rounds + a de-anonymization map):
+   ```bash
+   git diff | "$CLAUDE_PLUGIN_ROOT/scripts/ens-council.sh" -
+   ```
+   It emits `{mode, anon_labels, round1, round2}`. Exit `4` = couldn't convene (fewer than 2 OK reviewers); `5` = a reviewer wrote files (untrusted). In the peer round each reviewer saw the anonymized set (labelled A.., identity stripped — including its own) and was asked what the others *missed* or got *wrong*.
+2. **Chair (your judgment).** Read both rounds. Synthesize as the chairman — do **not** just take the majority: weigh how each reviewer's position **moved** between round-1 and the peer round, and side with a strong minority when the artifact supports it. Report with explicit dissent — for each material finding: **Agrees** (who/why), **Clashes** (who/why), **What-You-Lose** (the cost of the call you make). Then the verdict.
+3. **Fix → re-review** as in the normal loop (re-run `--council` only if the change is itself high-stakes; otherwise a plain re-review suffices).
+
 ## Read-only safety
 - Reviewers run cd'd into a disposable `git worktree` copy at HEAD (your uncommitted tracked changes replayed in), so the engine never writes to your real working tree. `wip_replayed` reports whether that replay succeeded.
 - This isolates working-tree **files**. It does not sandbox a reviewer that deliberately runs git/shell commands against shared refs/stash/config or writes to absolute paths — the codex reviewer runs under `--sandbox read-only`; the others run in plan/read-only mode and are trusted not to.
