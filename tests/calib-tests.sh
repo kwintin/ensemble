@@ -39,14 +39,16 @@ p="$(cat)"
 d="$(printf '%s' "$p" | grep -oE '#STUB [a-z_]+' | head -1 | awk '{print $2}')"
 emit(){ printf '{"endpoint":"%s","verdict":"%s","findings":[],"raw":"%s"}\n' "$ep" "$1" "$2"; }
 case "$d" in
-  hit)       emit CHANGES "found the planted bug XYZZY here"; exit 0;;
-  miss)      emit CHANGES "this code looks fine to me"; exit 0;;
-  approve)   emit APPROVED "looks clean"; exit 0;;
-  error_raw) emit ERROR "the bug XYZZY is present"; exit 3;;
-  empty)     exit 3;;
-  quota)     exit 10;;
-  timeout)   exit 12;;
-  *)         emit CHANGES "no directive"; exit 0;;
+  hit)           emit CHANGES "found the planted bug XYZZY here"; exit 0;;
+  miss)          emit CHANGES "this code looks fine to me"; exit 0;;
+  approve)       emit APPROVED "looks clean"; exit 0;;
+  approve_xyzzy) emit APPROVED "the bug XYZZY is here but I approve anyway"; exit 0;;
+  error_raw)     emit ERROR "the bug XYZZY is present"; exit 3;;
+  empty)         exit 3;;
+  quota)         exit 10;;
+  auth)          exit 11;;
+  timeout)       exit 12;;
+  *)             emit CHANGES "no directive"; exit 0;;
 esac
 STUBEOF
 chmod +x "$CALSTUB"
@@ -78,7 +80,12 @@ check "perf fully skipped -> n 0"            0 0 "0"     "$(getval 'd["ran"][0][
 check "perf fully skipped -> score null"     0 0 "None"  "$(getval 'd["ran"][0]["categories"]["perf"]["score"]')"
 check "perf skip reason recorded"            0 0 "timeout" "$(getval '[f["reason"] for f in d["ran"][0]["fixtures"] if f["category"]=="perf"][0]')"
 check "run leaves CWD unchanged"             0 0 "$PWD0" "$(pwd)"
-check "run did not leak temp dirs"           0 "$([ -z "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'tmp.*' -newer "$CALR" -type d 2>/dev/null | head -1)" ] && echo 0 || echo 0)"
+# real trap-cleanup assertion: route the engine's mktemp into a controlled TMPDIR and
+# confirm nothing is left behind after the run (the EXIT trap removed RUN_TEMP).
+LEAKT="$(mktemp -d)"
+TMPDIR="$LEAKT" ENS_MODEL_CLI="$CALSTUB" ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens-calibrate.sh" run --corpus "$CALC" >/dev/null 2>&1
+check "run cleans up its temp dirs (EXIT trap)" 0 0 "0" "$(find "$LEAKT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
+rm -rf "$LEAKT"
 
 echo "== calibrate: run all-skip -> exit 4 =="
 CALC2="$(mktemp -d)"; mkdir -p "$CALC2/perf/s1"
@@ -160,4 +167,75 @@ echo "== calibrate: surface contract =="
 check "calibrate command exists" 0 "$([ -f "$ROOT/commands/calibrate.md" ] && echo 0 || echo 1)"
 check "calibrate skill exists" 0 "$([ -f "$ROOT/skills/ensemble-calibrate/SKILL.md" ] && echo 0 || echo 1)"
 
-rm -rf "$CALSTUB" "$CALR" "$CALR2" "$CALC" "$CALC2" "$CALPRES" "$PERR" "$BADP" "$BADDATA" "$EMPTYP" "$EDATA" "$BASE3" "$PROP3" "$CALDATA" "$D3" 2>/dev/null || true
+echo "== calibrate: list verb =="
+LRES="$(bash "$ROOT/scripts/ens-calibrate.sh" list --corpus "$CALC" 2>/dev/null)"; rc=$?
+check "list exits 0" 0 "$rc"
+check "list reports total fixtures" 0 0 '"total": 4' "$LRES"
+check "list reports a category" 0 0 "injection" "$LRES"
+EMPTYC="$(mktemp -d)"
+bash "$ROOT/scripts/ens-calibrate.sh" list --corpus "$EMPTYC" >/dev/null 2>&1
+check "list empty corpus -> exit 3" 3 "$?"; rmdir "$EMPTYC"
+bash "$ROOT/scripts/ens-calibrate.sh" list --corpus /no-such-dir-xyz >/dev/null 2>&1
+check "list missing corpus -> exit 1" 1 "$?"
+
+echo "== calibrate: run grading edge cases =="
+CALCX="$(mktemp -d)"
+xmk(){ mkdir -p "$CALCX/$1/$2"; printf 'x = 1  #STUB %s\n' "$3" > "$CALCX/$1/$2/input.py"
+  printf '%s' "$4" > "$CALCX/$1/$2/expect.json"; }
+xmk injection anyhit hit       '{"category":"injection","verdict":"CHANGES","must_match":["NOPE-NOT-PRESENT","XYZZY"],"must_match_mode":"any"}'
+xmk bugs       cryWolf approve_xyzzy '{"category":"bugs","verdict":"CHANGES","must_match":["XYZZY"],"must_match_mode":"all"}'
+xmk perf       q1 quota       '{"category":"perf","verdict":"CHANGES","must_match":["X"],"must_match_mode":"all"}'
+xmk type-drift a1 auth        '{"category":"type-drift","verdict":"CHANGES","must_match":["X"],"must_match_mode":"all"}'
+RESX="$(ENS_MODEL_CLI="$CALSTUB" ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens-calibrate.sh" run --corpus "$CALCX" 2>/dev/null)"
+xval(){ printf '%s' "$RESX" | python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
+check "must_match_mode any: one-of-two matches -> hit" 0 0 "1.0" "$(xval 'd["ran"][0]["categories"]["injection"]["score"]')"
+check "CHANGES fixture + model verdict APPROVED -> miss" 0 0 "0.0" "$(xval 'd["ran"][0]["categories"]["bugs"]["score"]')"
+check "skip reason quota (exit 10)" 0 0 "quota" "$(xval '[f["reason"] for f in d["ran"][0]["fixtures"] if f["category"]=="perf"][0]')"
+check "skip reason auth (exit 11)" 0 0 "auth" "$(xval '[f["reason"] for f in d["ran"][0]["fixtures"] if f["category"]=="type-drift"][0]')"
+
+echo "== calibrate: propose sort / replace / skipped-endpoint =="
+# base with a prior scored tag + a bare tag; measure a lower-scored category -> sort order
+SROST="$(mktemp)"; python3 -c "import json; r=json.load(open('$CALR')); r['endpoints'][0]['strengths']=['type-drift:0.67','repo-reasoning']; json.dump(r,open('$SROST','w'))"
+SR="$(mktemp)"; cat > "$SR" <<'JSON'
+{"corpus_total":1,"scope":{"endpoint":null,"category":null},"date":"2026-06-28","ran":[
+ {"id":"t@codex","family":"openai","categories":{"perf":{"score":0.2,"n":5,"hits":1,"misses":4,"skipped":0}},"fixtures":[]}]}
+JSON
+SP="$(ENSEMBLE_ROSTER="$SROST" bash "$ROOT/scripts/ens-calibrate.sh" propose --result "$SR" 2>/dev/null)"
+SPATH="$(printf '%s' "$SP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["proposed_roster"])')"
+check "scored block sorts higher score first (prior 0.67 before fresh 0.20)" 0 0 "['type-drift:0.67', 'perf:0.20', 'repo-reasoning']" "$(python3 -c "import json; print(json.load(open('$SPATH'))['endpoints'][0]['strengths'])")"
+
+# replace an existing scored entry for the same category (no duplicate)
+RROST="$(mktemp)"; python3 -c "import json; r=json.load(open('$CALR')); r['endpoints'][0]['strengths']=['injection:0.20','repo-reasoning']; json.dump(r,open('$RROST','w'))"
+RR="$(mktemp)"; cat > "$RR" <<'JSON'
+{"corpus_total":1,"scope":{"endpoint":null,"category":null},"date":"2026-06-28","ran":[
+ {"id":"t@codex","family":"openai","categories":{"injection":{"score":0.8,"n":5,"hits":4,"misses":1,"skipped":0}},"fixtures":[]}]}
+JSON
+RP="$(ENSEMBLE_ROSTER="$RROST" bash "$ROOT/scripts/ens-calibrate.sh" propose --result "$RR" 2>/dev/null)"
+RPATH="$(printf '%s' "$RP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["proposed_roster"])')"
+rstr="$(python3 -c "import json; print(json.load(open('$RPATH'))['endpoints'][0]['strengths'])")"
+check "propose replaces same-category scored entry (new score present)" 0 0 "injection:0.80" "$rstr"
+check "propose replaces same-category scored entry (old score gone)" 0 "$(printf '%s' "$rstr" | grep -q 'injection:0.20' && echo 1 || echo 0)"
+
+# fully-skipped endpoint that IS in the roster -> left untouched, not in changes
+KR="$(mktemp)"; cat > "$KR" <<'JSON'
+{"corpus_total":1,"scope":{"endpoint":null,"category":null},"date":"2026-06-28","ran":[
+ {"id":"t@codex","family":"openai","categories":{"perf":{"score":null,"n":0,"hits":0,"misses":0,"skipped":3}},"fixtures":[]}]}
+JSON
+KP="$(ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens-calibrate.sh" propose --result "$KR" 2>/dev/null)"
+check "fully-skipped roster endpoint -> no changes" 0 0 "[]" "$(printf '%s' "$KP" | python3 -c 'import json,sys; print([c["id"] for c in json.load(sys.stdin)["changes"]])')"
+KPATH="$(printf '%s' "$KP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["proposed_roster"])')"
+check "fully-skipped endpoint strengths preserved" 0 0 "['repo-reasoning', 'type-drift']" "$(python3 -c "import json; print(json.load(open('$KPATH'))['endpoints'][0]['strengths'])")"
+
+# malformed result -> exit 2
+printf 'this is not json' | ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens-calibrate.sh" propose >/dev/null 2>&1
+check "propose malformed result -> exit 2" 2 "$?"
+
+echo "== calibrate: apply via ENSEMBLE_ROSTER target =="
+EROST="$(mktemp)"; cp "$CALR" "$EROST"
+EAP="$(mktemp)"; python3 -c "import json; r=json.load(open('$EROST')); r['endpoints'][0]['strengths']=['injection:0.50','repo-reasoning']; r['endpoints'][0]['strengths_basis']='calibrated 2026-06-28'; json.dump(r,open('$EAP','w'))"
+written="$(ENSEMBLE_ROSTER="$EROST" bash -c "ENSEMBLE_ROSTER='$EROST' CLAUDE_PLUGIN_DATA= '$ROOT/scripts/ens-calibrate.sh' apply --proposed '$EAP'" 2>/dev/null)"; rc=$?
+check "apply via ENSEMBLE_ROSTER exits 0" 0 "$rc"
+check "apply wrote the ENSEMBLE_ROSTER path" 0 0 "$EROST" "$written"
+check "apply via ENSEMBLE_ROSTER persisted the calibration" 0 0 "injection:0.50" "$(python3 -c "import json; print(json.load(open('$EROST'))['endpoints'][0]['strengths'])")"
+
+rm -rf "$CALSTUB" "$CALR" "$CALR2" "$CALC" "$CALC2" "$CALCX" "$CALPRES" "$PERR" "$BADP" "$BADDATA" "$EMPTYP" "$EDATA" "$BASE3" "$PROP3" "$CALDATA" "$D3" "$SROST" "$SR" "$RROST" "$RR" "$KR" "$EROST" "$EAP" 2>/dev/null || true

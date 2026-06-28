@@ -97,7 +97,7 @@ for cat in sorted(os.listdir(corpus)):
         print("%s\t%s\t%s\t%s" % (cat, name, fp, ins[0]))
 PY
   local nfix; nfix="$(wc -l < "$FIXTSV" | tr -d ' ')"
-  [ "${nfix:-0}" -gt 0 ] || { [ -n "$only_cat" ] && die "run: no fixtures in category '$only_cat'"; echo '{"categories":{},"total":0}'; exit 3; }
+  [ "${nfix:-0}" -gt 0 ] || { [ -n "$only_cat" ] && die "run: no fixtures in category '$only_cat'"; log "empty corpus: no fixtures under $corpus"; exit 3; }
 
   local JOBS="$RUN_TEMP/jobs.tsv"; : > "$JOBS"
   local total_runs=$(( ${#eps[@]} * nfix )) done=0 i=0
@@ -165,9 +165,20 @@ def gradable_and_verdict(out_path):
         return None, None
     return text, str(env.get("verdict", "ERROR")).upper()
 
-def reason_for(rc):
-    return {10:"quota",11:"auth",12:"timeout",13:"missing"}.get(rc) \
-           or ("failed" if rc not in (0,3) else "empty")
+def reason_for(rc, out_path):
+    r = {10:"quota",11:"auth",12:"timeout",13:"missing"}.get(rc)
+    if r: return r
+    if rc not in (0, 3): return "failed"
+    # exit 0/3 with no usable raw: distinguish nothing-returned from garbled output
+    try:
+        content = open(out_path, encoding="utf-8").read()
+    except Exception:
+        return "empty"
+    if not content.strip(): return "empty"
+    try:
+        json.loads(content); return "empty"      # valid envelope but raw was empty
+    except Exception:
+        return "unparseable"                      # the CLI returned non-envelope text
 
 # endpoint -> ordered dict of category -> {hits,misses,skipped}; endpoint -> fixtures[]
 order_eps = []
@@ -189,7 +200,7 @@ for line in open(jobs_path, encoding="utf-8"):
     text, verdict = gradable_and_verdict(out_path)
     if text is None:
         agg[ep][cat]["skipped"] += 1
-        fxs[ep].append({"category":cat,"name":name,"outcome":"skip","reason":reason_for(rc)})
+        fxs[ep].append({"category":cat,"name":name,"outcome":"skip","reason":reason_for(rc, out_path)})
         continue
     pats = expect.get("must_match") or []
     mode = expect.get("must_match_mode","all")
@@ -245,9 +256,9 @@ cmd_propose() {
     --corpus) shift 2 ;;   # accepted for symmetry; unused
     *) die "propose: unknown arg '$1'" ;;
   esac; done
-  local rsrc
+  local rsrc rtmp=""
   if [ -n "$result" ]; then [ -f "$result" ] || die "propose: --result file not found: $result"; rsrc="$result"
-  else rsrc="$(mktemp)"; cat > "$rsrc"; fi   # stdin
+  else rsrc="$(mktemp)"; rtmp="$rsrc"; cat > "$rsrc"; fi   # stdin
   [ -r "$ROSTER" ] || die "roster '$ROSTER' missing or unreadable"
 
   python3 - "$rsrc" "$ROSTER" <<'PY'
@@ -269,7 +280,8 @@ date = result.get("date") or ""
 SCORED = re.compile(r'^[a-z0-9][a-z0-9-]*:[0-9.]+$')
 
 def score_key(entry):
-    return float(entry.split(":",1)[1])
+    try: return float(entry.split(":",1)[1])
+    except (ValueError, IndexError): return 0.0   # malformed score sorts lowest, never crashes
 
 changes = []
 for r in result.get("ran") or []:
@@ -317,6 +329,9 @@ for ch in changes:
     sys.stderr.write("  %s\n    - %s\n    + %s\n" % (ch["id"], ch["old"], ch["new"]))
 print(json.dumps({"proposed_roster": proposed, "changes": changes, "date": date}, indent=2))
 PY
+  local prc=$?
+  [ -n "$rtmp" ] && rm -f "$rtmp"   # clean up the stdin-captured temp (if any)
+  return "$prc"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

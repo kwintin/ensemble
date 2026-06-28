@@ -23,6 +23,7 @@ Drive an independent multi-reviewer consensus loop over the ensemble core.
 - Independence is by model **family**, never transport count.
 - Never re-review without fixing first. Commit between rounds so reviewers see current state.
 - A reviewer that degraded (auth/quota/timeout) is skipped while quorum holds — do not block on it.
+- If you ever choose reviewers by topic (a situational preset for, say, an injection-heavy diff), an endpoint's `strengths` may be **scored** `category:score` tags from `/ensemble:calibrate` (e.g. `injection:0.88`) or plain bare tags — read either as a routing prior, not a guarantee; family diversity, not per-topic strength, is what makes the panel sound.
 
 ## Council mode (`--council`)
 For high-stakes review (spec sign-off, auth/billing/crypto), run a **de-biased two-round** review instead of the single pass. ~2× the calls.

@@ -1,7 +1,7 @@
 {
   "category": "perf",
   "verdict": "CHANGES",
-  "must_match": ["quadratic|o\\(n\\^?2\\)|\"\\.join|''\\.join|str\\.join|join\\(|append.*join|inefficient|copies"],
+  "must_match": ["quadratic|o\\(n\\^?2\\)|\\.join\\(|''\\.join|str\\.join|use .*join|repeated (string )?concatenation|reallocat"],
   "must_match_mode": "all",
   "note": "repeated string concatenation in a loop is quadratic; use ''.join"
 }

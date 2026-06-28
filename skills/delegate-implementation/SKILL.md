@@ -13,7 +13,7 @@ Offload ONE well-scoped unit to the best-fit executor model, **verify it yoursel
    ```bash
    bash -c 'source "$CLAUDE_PLUGIN_ROOT/scripts/lib/roster-path.sh"; source "$CLAUDE_PLUGIN_ROOT/scripts/lib/roster.sh"; ens_executors "$ROSTER"'  # id <tab> strengths <tab> latency
    ```
-   Strengths may be **scored** `category:score` tags (from `/ensemble:calibrate`, e.g. `injection:0.88`) or plain bare tags (uncalibrated priors). Map the unit to a category and **prefer the executor with the highest `<category>:<score>`**; treat a bare tag as a weaker prior than any scored tag, and an absent tag as no signal. **State why** you routed where you did. `--endpoint id` / `--strength tag` override your judgment.
+   Strengths may be **scored** `category:score` tags (from `/ensemble:calibrate`, e.g. `injection:0.88`) or plain bare tags (uncalibrated priors). Map the unit to a calibration category — a security/sanitization unit → `injection`; a money/rounding/currency unit → `payment-logic`; a perf/complexity unit → `perf`; a signature/type unit → `type-drift`; a thread/async/locking unit → `concurrency`; a general correctness unit → `bugs` — and **prefer the executor with the highest `<category>:<score>`**; treat a bare tag as a weaker prior than any scored tag, and an absent tag as no signal. **State why** you routed where you did. `--endpoint id` / `--strength tag` override your judgment.
 3. **Delegate one unit.** Run the engine — it creates an isolated worktree, runs the executor write-enabled in it, and returns a JSON result; the worktree is LEFT in place:
    ```bash
    "$CLAUDE_PLUGIN_ROOT/scripts/ens-delegate.sh" run --endpoint <id> --prompt-file <TASK>
