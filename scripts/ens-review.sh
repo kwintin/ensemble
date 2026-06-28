@@ -28,7 +28,7 @@ die() { echo "ens-review: $*" >&2; exit 1; }
 # ----------------------------------------------------------------------------
 
 PROMPT_FILE=""; SUBSET=""; STDIN_TMP=""
-WORK=""; WT=""; MAIN_REPO=""; RO_GUARDED=0; WIP_REPLAYED="none"
+WORK=""; WT=""; MAIN_REPO=""; RO_GUARDED=0; WIP_REPLAYED="none"; RO_BASELINE=""
 PIDS=(); _cleaned=0
 
 cleanup() {
@@ -37,12 +37,13 @@ cleanup() {
   # kill any reviewer jobs still running (e.g. on INT/TERM) before tearing down
   for _p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$_p" 2>/dev/null; done
   # remove the disposable worktree (idempotent; safe on a second trap fire)
-  if [ -n "$WT" ] && [ -n "$MAIN_REPO" ]; then
-    git -C "$MAIN_REPO" worktree remove --force "$WT" >/dev/null 2>&1
-    git -C "$MAIN_REPO" worktree prune >/dev/null 2>&1 || true
-  fi
+  [ -n "$WT" ] && [ -n "$MAIN_REPO" ] && git -C "$MAIN_REPO" worktree remove --force "$WT" >/dev/null 2>&1
   [ -n "$WORK" ] && rm -rf "$WORK"
+  # prune AFTER the worktree dir is gone so a partial registration from a failed
+  # `worktree add` (WT may be "") is also reaped, not just a clean removal
+  [ -n "$MAIN_REPO" ] && git -C "$MAIN_REPO" worktree prune >/dev/null 2>&1
   [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"
+  return 0
 }
 # On a signal, clean up and ABORT immediately so the script does not resume on
 # torn-down directories; cleanup() is idempotent so the EXIT trap is harmless.
@@ -123,6 +124,10 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git -C "$WT" add -A >/dev/null 2>&1 || true
     git -C "$WT" -c core.hooksPath=/dev/null -c user.email=ensemble@local -c user.name=ensemble \
       -c commit.gpgsign=false commit --quiet --no-verify --allow-empty -m ensemble-review-snapshot >/dev/null 2>&1 || true
+    # capture the post-setup baseline; a reviewer write is any DELTA from it. This is
+    # robust even if the snapshot commit failed (baseline would just be non-empty),
+    # so a clean reviewer run never false-positives to exit 5.
+    RO_BASELINE="$(git -C "$WT" status --porcelain 2>/dev/null)"
     REVIEW_CWD="$WT"
   else
     # isolation was expected (we are in a git repo) but could not be created:
@@ -149,9 +154,10 @@ wait
 PIDS=()
 
 # did any reviewer write into the isolated copy? (signal only; user tree is safe)
+# violation = the worktree status CHANGED from the post-setup baseline
 RO_VIOLATION=0
 if [ "$RO_GUARDED" = 1 ]; then
-  if [ -n "$(git -C "$WT" status --porcelain 2>/dev/null)" ]; then
+  if [ "$(git -C "$WT" status --porcelain 2>/dev/null)" != "$RO_BASELINE" ]; then
     RO_VIOLATION=1
     git -C "$WT" status --porcelain -z 2>/dev/null > "$WORK/.mutated" || true
   fi
@@ -210,7 +216,10 @@ mf=os.path.join(work,".mutated")
 if os.path.exists(mf):
     raw=open(mf,encoding="utf-8",errors="replace").read()
     for rec in raw.split("\0"):
-        if rec: mutated.append(rec[3:] if len(rec)>3 else rec)
+        if not rec: continue
+        # porcelain -z records are "XY path"; a rename emits a second prefix-less
+        # record (the source path) -- only strip when the "XY " prefix is present
+        mutated.append(rec[3:] if (len(rec)>3 and rec[2]==" ") else rec)
 res={"reviewers":reviewers,"families_ok":fams_ok,"family_collisions":collisions,
      "quorum_required":min_q,"quorum_met":quorum_met,
      "read_only_violation": ro_v=="1",

@@ -157,6 +157,12 @@ check "family collision record present" 0 0 '"endpoints"' "$out"
 # only a@codex ok (1 family) with min_quorum 2 -> below quorum
 out2="$(printf hi | ENSEMBLE_ROSTER="$RM" ENS_TEST_MODES='b@codex=auth,c@codex=auth' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc2=$?
 check "below quorum -> exit 4" 4 "$rc2"
+# min_quorum typo (999) must be capped at the reviewer count, not render quorum unreachable
+capr="$(mktemp)"; printf '%s' '{"min_quorum":999,"endpoints":[{"id":"a@codex","adapter":"codex","model":"gpt-5.5","effort":"medium","structured_output":"json","family":"openai","role":"reviewer","enabled":true},{"id":"b@codex","adapter":"codex","model":"gpt-5.5","effort":"medium","structured_output":"json","family":"xai","role":"reviewer","enabled":true}]}' > "$capr"
+out3="$(printf hi | ENSEMBLE_ROSTER="$capr" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc3=$?
+check "min_quorum 999 capped -> quorum reachable, exit 0" 0 "$rc3"
+check "quorum_required capped to reviewer count (2)" 0 0 '"quorum_required": 2' "$out3"
+rm -f "$capr"
 
 echo "== ens-review endpoint-id hardening =="
 pf="$(mktemp)"; echo "x" > "$pf"
