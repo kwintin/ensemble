@@ -26,10 +26,13 @@ grok_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
 
 grok_run() { # ENDPOINT MODEL EFFORT PROMPT_FILE DIR OUT_FILE  (executor / write mode)
   local ep="$1" model="$2" eff="$3" pf="$4" dir="$5" of="$6"
+  local eff2; case "$eff" in
+    minimal) eff2=low ;; low|medium|high|xhigh) eff2="$eff" ;; max) eff2=max ;; *) eff2=high ;;
+  esac
   # --permission-mode acceptEdits is grok's write mode; --cwd sets the worktree.
   # (no 2>/dev/null — stderr must reach model-cli's ERR for auth/quota classification)
-  ens_text_cli_review "$of" -- \
-    grok -p "$(ens_digest_prompt "$pf")" -m "$model" --permission-mode acceptEdits --cwd "$dir"
+  ENS_CLI_TIMEOUT=1200 ens_text_cli_review "$of" -- \
+    grok -p "$(ens_digest_prompt "$pf")" -m "$model" --permission-mode acceptEdits --effort "$eff2" --cwd "$dir"
 }
 
 grok_health() { # -> ok | auth | missing

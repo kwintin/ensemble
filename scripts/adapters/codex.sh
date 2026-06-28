@@ -3,6 +3,10 @@
 # NOTE: real-codex flag interplay (--output-schema + -o on `exec`) is verified in
 # Task 10 (Tier-2). The stub emulates the contract for Tier-1.
 
+# defensively source the shared lib (codex_run uses ens_digest_prompt) so the adapter
+# works when sourced standalone (tests) as well as via model-cli.sh
+[ -n "${_ENS_ADAPTER_COMMON:-}" ] || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/adapter_common.sh"
+
 _codex_schema_file() {  # emits a temp JSON-Schema file path for the verdict shape
   # NOTE: OpenAI structured-output requires additionalProperties:false and every
   # property key listed in required at every object level (real-codex validated in Task 10).

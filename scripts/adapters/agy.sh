@@ -15,7 +15,8 @@ agy_run() { # ENDPOINT MODEL EFFORT PROMPT_FILE DIR OUT_FILE  (executor / write 
   local ep="$1" model="$2" eff="$3" pf="$4" dir="$5" of="$6"
   # agy has no --dir/--cwd flag, so run it cd'd into the worktree (OUT is absolute).
   # --dangerously-skip-permissions auto-approves the executor's file edits.
-  ( cd "$dir" && ens_text_cli_review "$of" -- \
+  ( cd "$dir" || { echo "agy_run: cannot enter worktree '$dir'" >&2; exit 125; }
+    ENS_CLI_TIMEOUT=1200 ens_text_cli_review "$of" -- \
       agy -p "$(ens_digest_prompt "$pf")" --model "$model" --dangerously-skip-permissions )
 }
 

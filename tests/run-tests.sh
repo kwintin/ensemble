@@ -424,6 +424,15 @@ WT2="$(printf '%s' "$out2" | python3 -c 'import json,sys;print(json.load(sys.std
 check "delegate discard removed the worktree" 0 0 "1" "$([ ! -d "$WT2" ] && echo 1 || echo 0)"
 check "delegate discard left no uncommitted tracked changes" 0 "$(cd "$dg" && git status --porcelain | grep -v '^??' | grep -q . && echo 1 || echo 0)"
 rm -rf "$dg"; rm -f "$pf"
+# PROVENANCE GUARD: merge/discard must refuse a worktree that is not an ensemble/delegate-* branch
+pg="$(mktemp -d)"; ( cd "$pg" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init && git worktree add -q -b my-feature "$pg/feat" HEAD )
+rc=0; ( cd "$pg" && bash "$ROOT/scripts/ens-delegate.sh" discard --worktree "$pg/feat" >/dev/null 2>&1 ) || rc=$?
+check "discard refuses a non-delegate worktree -> exit 1" 1 "$rc"
+check "non-delegate worktree survived the refused discard" 0 0 "1" "$([ -d "$pg/feat" ] && echo 1 || echo 0)"
+check "user's branch survived the refused discard" 0 0 "my-feature" "$(cd "$pg" && git branch --list my-feature)"
+rc=0; ( cd "$pg" && bash "$ROOT/scripts/ens-delegate.sh" merge --worktree "$pg/feat" >/dev/null 2>&1 ) || rc=$?
+check "merge refuses a non-delegate worktree -> exit 1" 1 "$rc"
+( cd "$pg" && git worktree remove --force "$pg/feat" 2>/dev/null ); rm -rf "$pg"
 
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?

@@ -135,7 +135,8 @@ ens_text_cli_review() { # OUT_FILE -- CLI ARGS...
   local rc
   local _e; [[ $- == *e* ]] && _e=1 || _e=0
   set +e
-  ens_run_timeout 600 -- "$@" >"$of"
+  # default 600s (review); executors (write mode) raise it via ENS_CLI_TIMEOUT
+  ens_run_timeout "${ENS_CLI_TIMEOUT:-600}" -- "$@" >"$of"
   rc=$?
   [ "$_e" -eq 1 ] && set -e || true
   return "$rc"
