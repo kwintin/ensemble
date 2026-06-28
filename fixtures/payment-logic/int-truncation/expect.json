@@ -1,1 +1,1 @@
-{"category":"payment-logic","verdict":"CHANGES","must_match":["remainder|truncat|lost cent|drops? .*cent|rounding|//|floor|leftover"],"must_match_mode":"all","note":"integer division drops remainder cents; must distribute the remainder"}
+{"category":"payment-logic","verdict":"CHANGES","must_match":["remainder|truncat|lost? .*cent|drops? .*cent|leftover|integer division|floor division|distribute .*(cent|remainder)|one cent|//\\s"],"must_match_mode":"all","note":"// drops remainder cents; distribute the remainder"}

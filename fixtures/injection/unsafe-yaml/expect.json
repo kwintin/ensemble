@@ -1,1 +1,1 @@
-{"category":"injection","verdict":"CHANGES","must_match":["yaml\\.load|safe_load|deserializ|arbitrary (python )?(object|code)|unsafe load|SafeLoader"],"must_match_mode":"all","note":"yaml.load on untrusted input executes arbitrary objects; use safe_load"}
+{"category":"injection","verdict":"CHANGES","must_match":["safe_?load|safeloader|arbitrary (python )?(object|code)|(remote |arbitrary )?code execution|unsafe ?(loader|deserializ)|\\brce\\b"],"must_match_mode":"all","note":"UnsafeLoader on untrusted input enables arbitrary object construction; use safe_load/SafeLoader"}

@@ -646,8 +646,14 @@ except Exception as e: errs.append("plugin.json: %s" % e)
 try:
     m = json.load(open(os.path.join(root, ".claude-plugin/marketplace.json")))
     pl = m.get("plugins") or []
-    if not any(isinstance(x, dict) and x.get("name") == "ensemble" for x in pl):
+    ent = next((x for x in pl if isinstance(x, dict) and x.get("name") == "ensemble"), None)
+    if ent is None:
         errs.append("marketplace.json does not list the ensemble plugin")
+    else:
+        if ent.get("version") != p.get("version"):
+            errs.append("marketplace.json plugin version (%s) != plugin.json version (%s)" % (ent.get("version"), p.get("version")))
+        if ent.get("source") != "./":
+            errs.append("marketplace.json plugin source should be './' (got %r)" % ent.get("source"))
 except Exception as e: errs.append("marketplace.json: %s" % e)
 # every shipped command exists and references an existing skill or script
 for cmd in ("review","delegate","calibrate","setup","doctor"):

@@ -1,6 +1,8 @@
-def index_by_id(records: dict) -> dict:
-    return {r["id"]: r for r in records}     # iterating a dict yields KEYS, not records
+def first_name(users_by_id):
+    # users_by_id is a dict {id: {"name": ...}}; iterating a dict yields KEYS (ids),
+    # so `u["name"]` indexes an int id -> TypeError at runtime
+    for u in users_by_id:
+        return u["name"]
 
-def build(rows):
-    # rows is a list, but index_by_id is annotated/used as if given a dict
-    return index_by_id(rows)
+def greet(users_by_id):
+    return "Hi " + first_name(users_by_id)   # called with a real dict

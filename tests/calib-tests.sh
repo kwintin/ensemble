@@ -29,6 +29,42 @@ if n < 6: print("  - only %d fixtures"%n); sys.exit(1)
 PY
 check "shipped fixture corpus is well-formed" 0 "$rc"
 
+# fixture must_match precision/recall: a genuine review of the planted bug must MATCH,
+# and an incidental-keyword decoy must NOT (guards against loose/tight regexes — the
+# round-1 polish review caught several over-broad alternates).
+python3 - "$ROOT" <<'PY'; rc=$?
+import json, re, os, sys
+root = sys.argv[1]
+cases = [
+ ("bugs/identity-compare",
+  "Line 3: using `is` here compares object identity, not value — use == instead.",
+  "This function looks fine; it is a clean helper and the logic is correct."),
+ ("injection/unsafe-yaml",
+  "Line 4: yaml.load with UnsafeLoader on untrusted input allows arbitrary code execution — use safe_load.",
+  "Deserialization attacks are a general concern; consider validating inputs across the app."),
+ ("payment-logic/int-truncation",
+  "Line 3: integer division // drops the remainder cents; you must distribute the remainder.",
+  "Consider using proper rounding conventions when displaying currency to the user."),
+ ("perf/n-plus-one",
+  "Line 5: this runs one query per order — a classic N+1; batch into a single query or join.",
+  "You could add an index for better SQL readability and maybe a JOIN view elsewhere."),
+ ("type-drift/wrong-container",
+  "Line 4: iterating a dict yields keys (the ids), so u[\"name\"] indexes an int and raises.",
+  "There is some type confusion in this module that could be clearer with annotations."),
+ ("concurrency/toctou",
+  "Line 5: check-then-act between exists() and mkdir() is a TOCTOU race; use exist_ok.",
+  "Wrap risky calls in try/except and consider an atomic counter for the metrics."),
+]
+errs = []
+for fx, good, decoy in cases:
+    pats = json.load(open(os.path.join(root, "fixtures", fx, "expect.json")))["must_match"]
+    match = lambda t: all(re.search(p, t, re.I) for p in pats)   # mode all
+    if not match(good):  errs.append("%s: genuine review did not match (recall miss)" % fx)
+    if match(decoy):     errs.append("%s: decoy review matched (false positive)" % fx)
+if errs: [print("  -", e) for e in errs]; sys.exit(1)
+PY
+check "fixture must_match: genuine matches, decoy rejected" 0 "$rc"
+
 # stub model-cli: emits a canned envelope per "#STUB <directive>" found in the prompt
 CALSTUB="$(mktemp)"
 cat > "$CALSTUB" <<'STUBEOF'

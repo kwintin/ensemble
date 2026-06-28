@@ -102,8 +102,10 @@ platform considerations the code already handles:
 
 - **`timeout(1)`** — not present by default on macOS; the wall-clock guard falls back to
   a portable perl/python implementation (and prefers `gtimeout` if installed).
-- **`mktemp`** — BSD (macOS) `mktemp -d` ignores `$TMPDIR`; temp dirs are created with an
-  explicit `"${TMPDIR:-/tmp}/…XXXXXX"` template so behavior is consistent on both.
+- **`mktemp`** — BSD (macOS) `mktemp -d` ignores `$TMPDIR` (it uses the Darwin per-user
+  temp dir) but still creates valid temp dirs, so the engines work on both. Where
+  `$TMPDIR`-routing actually matters (the calibration run's temp cleanup), an explicit
+  `"${TMPDIR:-/tmp}/…XXXXXX"` template is used so behavior is consistent across platforms.
 - **`date`** — uses `date -u +%Y-%m-%d` (portable across BSD and GNU).
 - No reliance on GNU-only flags in the hot paths; JSON handling is done in Python, not
   `sed`/`awk`, to avoid shell-portability traps.
