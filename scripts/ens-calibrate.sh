@@ -83,7 +83,9 @@ cmd_run() {
   # when a local would be out of scope — so a local RUN_TEMP would leak (the trap's
   # `[ -n "${RUN_TEMP:-}" ]` guard would see an empty value and skip the rm).
   RUN_TEMP="$(mktemp -d "${TMPDIR:-/tmp}/ens-calib.XXXXXX")" || die "mktemp failed"
-  trap '[ -n "${RUN_TEMP:-}" ] && rm -rf "$RUN_TEMP"' EXIT INT TERM
+  trap '[ -n "${RUN_TEMP:-}" ] && rm -rf "$RUN_TEMP"' EXIT
+  # on signal: clean up AND exit (130) so the loop doesn't continue into deleted paths
+  trap '[ -n "${RUN_TEMP:-}" ] && rm -rf "$RUN_TEMP"; exit 130' INT TERM
 
   # enumerate fixtures (sorted, optionally filtered) as TSV: category<TAB>name<TAB>dir<TAB>input
   local FIXTSV="$RUN_TEMP/fixtures.tsv"
