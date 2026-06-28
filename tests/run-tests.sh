@@ -355,7 +355,19 @@ rm -rf "$cot"
 cot2="$(mktemp -d)"; ( cd "$cot2" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
 cp "$RM" "$cot2/roster.json"
 out3="$(cd "$cot2" && printf 'review' | ENSEMBLE_ROSTER="$cot2/roster.json" ENS_TEST_MODES='a@codex=mutate' bash "$ROOT/scripts/ens-council.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc3=$?
-check "council read-only violation -> exit 5" 5 "$rc3"; rm -rf "$cot2"
+check "council read-only violation -> exit 5" 5 "$rc3"
+check "council read-only still emits council wrapper (not bare ens-review json)" 0 0 '"mode": "council"' "$out3"
+rm -rf "$cot2"
+# identity scrub: a reviewer self-identifying in prose must be scrubbed from the peer block
+cot3="$(mktemp -d)"; ( cd "$cot3" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+dbg="$(mktemp -d)"
+( cd "$cot3" && printf 'review this' | ENS_COUNCIL_DEBUG_DIR="$dbg" ENSEMBLE_ROSTER="$ROOT/roster.json" STUB_MODE=ok bash "$ROOT/scripts/ens-council.sh" --reviewers grok-build@grok,mistral-medium-3.5@vibe - >/dev/null 2>&1 )
+check "council exposes peer block for inspection" 0 0 "1" "$([ -f "$dbg/peer.txt" ] && echo 1 || echo 0)"
+# the vibe stub emits 'from vibe (model: mistral-medium-3.5)'; both identity tokens must be scrubbed
+check "council scrubbed model name 'vibe' from peer block" 0 "$(grep -qi 'vibe' "$dbg/peer.txt" && echo 1 || echo 0)"
+check "council scrubbed family 'mistral' from peer block" 0 "$(grep -qi 'mistral' "$dbg/peer.txt" && echo 1 || echo 0)"
+check "council peer block uses anonymized labels" 0 0 "REVIEW A" "$(cat "$dbg/peer.txt" 2>/dev/null)"
+rm -rf "$cot3" "$dbg"
 
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
