@@ -118,6 +118,9 @@ check "vibe_health ok (config api_key)" 0 0 "ok" "$(ENS_VIBE_CONFIG="$VIBECFG" v
 check "vibe_health auth (no config)" 0 0 "auth" "$(ENS_VIBE_CONFIG=/no/such/vibe.toml vibe_health)"
 wscfg="$(mktemp)"; printf '[[providers]]\nname = "mistral"\napi_key = "   "\n' > "$wscfg"
 check "vibe_health auth (whitespace-only api_key)" 0 0 "auth" "$(ENS_VIBE_CONFIG="$wscfg" vibe_health)"; rm -f "$wscfg"
+envcfg="$(mktemp)"; printf '[[providers]]\nname = "mistral"\napi_key_env_var = "ENS_TEST_VIBE_KEY"\n' > "$envcfg"
+check "vibe_health ok (api_key_env_var set)" 0 0 "ok" "$(ENS_TEST_VIBE_KEY=secret ENS_VIBE_CONFIG="$envcfg" vibe_health)"
+check "vibe_health auth (api_key_env_var unset)" 0 0 "auth" "$(ENS_TEST_VIBE_KEY= ENS_VIBE_CONFIG="$envcfg" vibe_health)"; rm -f "$envcfg"
 
 echo "== model-cli review =="
 pf="$(mktemp)"; echo "find bugs" > "$pf"

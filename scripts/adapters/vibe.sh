@@ -19,11 +19,24 @@ vibe_health() { # -> ok | auth | missing
   [ -f "$cfg" ] || { echo auth; return 0; }
   # Check for at least one [[providers]] block with a non-empty api_key
   if python3 - "$cfg" <<'PY' 2>/dev/null; then
-import sys, re
-cfg = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-# Line-scan for a non-empty api_key inside a [[providers]] block. A block ends at
-# the next table/array header (single [ or double [[). Accept single- or
-# double-quoted values; reject whitespace-only keys.
+import sys, re, os
+cfg_path = sys.argv[1]
+cfg = open(cfg_path, encoding="utf-8", errors="replace").read()
+# A [[providers]] block authenticates if it has an inline non-empty api_key, OR an
+# api_key_env_var naming a var resolvable from the process env OR vibe's sibling
+# ~/.vibe/.env file (where vibe actually stores the key). Block ends at the next
+# table/array header (single [ or double [[). Accept single- or double-quotes.
+envfile = {}
+try:
+    for ln in open(os.path.join(os.path.dirname(cfg_path), ".env"), encoding="utf-8", errors="replace"):
+        ln = ln.strip()
+        if ln and not ln.startswith("#") and "=" in ln:
+            k, v = ln.split("=", 1)
+            envfile[k.strip()] = v.strip().strip('"').strip("'")
+except Exception:
+    pass
+def resolved(var):
+    return (os.environ.get(var, "").strip() or envfile.get(var, "").strip())
 in_provider = False
 for line in cfg.splitlines():
     stripped = line.strip()
@@ -36,7 +49,10 @@ for line in cfg.splitlines():
     if in_provider:
         m = re.match(r'''^api_key\s*=\s*['"]([^'"]*)['"]''', stripped)
         if m and m.group(1).strip():
-            sys.exit(0)  # found a non-empty api_key
+            sys.exit(0)  # inline non-empty api_key
+        m = re.match(r'''^api_key_env_var\s*=\s*['"]([^'"]+)['"]''', stripped)
+        if m and resolved(m.group(1)):
+            sys.exit(0)  # key supplied via process env or ~/.vibe/.env
 sys.exit(1)
 PY
     echo ok
