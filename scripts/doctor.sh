@@ -8,6 +8,8 @@ echo "multi-model-cc — doctor"
 while IFS= read -r ep; do
   [ -n "$ep" ] || continue
   adapter="$(ens_endpoint_field "$ROSTER" "$ep" adapter)"
+  [[ "$adapter" =~ ^[a-z0-9_-]+$ ]] || { echo "invalid adapter name '$adapter'" >&2; exit 1; }
+  [ -f "$SCRIPTS/adapters/$adapter.sh" ] || { echo "no adapter '$adapter'" >&2; exit 1; }
   source "$SCRIPTS/adapters/$adapter.sh"
   st="$("${adapter}_health")"
   if [ "$st" = "ok" ]; then

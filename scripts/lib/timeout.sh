@@ -8,6 +8,7 @@ ens_run_timeout() {
     perl -e '
       my $s = shift @ARGV;
       my $pid = fork();
+      defined $pid or do { warn "ens_run_timeout: fork failed\n"; exit 124 };
       if ($pid == 0) { exec @ARGV or exit 127; }
       local $SIG{ALRM} = sub { kill("TERM",$pid); sleep 1; kill("KILL",$pid); };
       alarm $s;

@@ -8,6 +8,7 @@ source "$SCRIPTS/lib/signal.sh"
 source "$SCRIPTS/lib/roster.sh"
 source "$SCRIPTS/lib/verdict.sh"
 
+# exit 1 = usage error (outside the 0/2/3/10-13 runtime contract)
 die() { echo "model-cli: $*" >&2; exit 1; }
 
 verb="${1:-}"; shift || true
@@ -24,12 +25,15 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$ENDPOINT" ] || die "need --endpoint"
 [ -n "$PROMPT_FILE" ] || die "need --prompt-file or '-'"
+[ "$PROMPT_FILE" = "-" ] || [ -f "$PROMPT_FILE" ] || die "prompt file not found: $PROMPT_FILE"
 
 ADAPTER="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" adapter)"
 MODEL="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" model)"
 EFFORT="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" effort)"
 STRUCT="$(ens_endpoint_field "$ROSTER" "$ENDPOINT" structured_output)"
 [ -n "$ADAPTER" ] || die "unknown endpoint '$ENDPOINT'"
+[[ "$ADAPTER" =~ ^[a-z0-9_-]+$ ]] || die "invalid adapter name '$ADAPTER'"
+[ -f "$SCRIPTS/adapters/$ADAPTER.sh" ] || die "no adapter '$ADAPTER'"
 source "$SCRIPTS/adapters/$ADAPTER.sh"
 
 OUT="$(mktemp)"; ERR="$(mktemp)"
@@ -41,4 +45,7 @@ if [ "$rc" -ne 0 ]; then code="$(ens_classify "$rc" "$ERR" "$ENDPOINT")"; exit "
 if [ ! -s "$OUT" ]; then echo "model-cli: empty output" >&2; exit 3; fi
 
 MODE="json"; [ "$STRUCT" = "sentinel" ] && MODE="sentinel"
-ens_normalize_verdict "$ENDPOINT" "$MODE" "$OUT"
+NORM="$(ens_normalize_verdict "$ENDPOINT" "$MODE" "$OUT")"
+printf '%s\n' "$NORM"
+printf '%s' "$NORM" | grep -q '"verdict": "ERROR"' && exit 3
+exit 0

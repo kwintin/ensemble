@@ -17,7 +17,7 @@ if mode=="json":
 else:  # sentinel
     m=re.search(r"===VERDICT===\s*(\w+)", raw)
     if m: verdict=m.group(1).upper()
-if verdict not in ("APPROVED","CHANGES","ERROR"): verdict="CHANGES"
+if verdict not in ("APPROVED","CHANGES","ERROR"): verdict="ERROR"
 print(json.dumps({"endpoint":ep,"verdict":verdict,"findings":findings,"raw":raw}, indent=2))
 PY
 }

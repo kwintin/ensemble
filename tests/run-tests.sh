@@ -25,6 +25,8 @@ check "quota -> exit 10" 10 "$code"
 check "quota -> ENS_SIGNAL" 0 0 'ENS_SIGNAL {"status":"QUOTA_EXHAUSTED"' "$sig"
 echo "please sign in" >"$ef"; code="$(ens_classify 1 "$ef" codex 2>/dev/null)"
 check "auth -> exit 11" 11 "$code"
+echo "Error: deadline exceeded" >"$ef"; code="$(ens_classify 1 "$ef" codex 2>/dev/null)"
+check "timeout -> exit 12" 12 "$code"
 rm -f "$ef" "$se"
 
 echo "== roster =="
@@ -74,6 +76,8 @@ check "review rc 0" 0 "$rc"
 check "review emits normalized verdict" 0 0 '"endpoint": "gpt-5.5@codex"' "$out"
 out="$(printf 'find bugs' | STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex - 2>/dev/null)"; rc=$?
 check "auth failure -> exit 11" 11 "$rc"
+out="$(printf 'find bugs' | STUB_MODE=bad bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex - 2>/dev/null)"; rc=$?
+check "ERROR verdict -> exit 3" 3 "$rc"
 rm -f "$pf"
 
 echo "== doctor =="
