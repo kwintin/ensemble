@@ -49,7 +49,7 @@ done
 wait
 
 python3 - "$WORK" "$ROSTER" "${REVIEWERS[@]}" <<'PY'
-import json,os,sys,re
+import json,os,sys
 work,roster=sys.argv[1],sys.argv[2]; eps=sys.argv[3:]
 rd=json.load(open(roster, encoding="utf-8"))
 fam={e["id"]:e.get("family") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
@@ -61,13 +61,8 @@ for ep in eps:
     rec={"endpoint":ep,"family":fam.get(ep),"status":"ok","reason":None,"verdict":None,"findings":[]}
     if rc==0:
         try:
-            raw=open(p+".out", encoding="utf-8").read()
-            m=re.search(r'\{.*\}', raw, re.DOTALL)
-            if m:
-                v=json.loads(m.group())
-                rec["verdict"]=v.get("verdict"); rec["findings"]=v.get("findings") or []
-            else:
-                raise ValueError("no JSON object found")
+            v=json.load(open(p+".out", encoding="utf-8"))
+            rec["verdict"]=v.get("verdict"); rec["findings"]=v.get("findings") or []
         except Exception:
             rec["status"]="degraded"; rec["reason"]="unparseable"
     else:

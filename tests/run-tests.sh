@@ -144,6 +144,7 @@ rm -f "$pf"
 echo "== ens-review normalize =="
 out="$(printf hi | ENSEMBLE_ROSTER="$RM" ENS_TEST_MODES='b@codex=auth' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"
 check "ok reviewer has status ok + a verdict" 0 0 '"status": "ok"' "$out"
+check "ok reviewer verdict extracted" 0 0 '"verdict": "CHANGES"' "$out"
 check "auth reviewer degraded with reason auth" 0 0 '"reason": "auth"' "$out"
 check "family stamped from roster" 0 0 '"family": "openai"' "$out"
 

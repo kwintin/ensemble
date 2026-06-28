@@ -28,7 +28,7 @@ codex_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
     --sandbox read-only --ephemeral -a never \
     -c "model_reasoning_effort=$eff" -m "$model" \
     --output-schema "$schema" -o "$of" \
-    "$prompt"
+    "$prompt" >/dev/null
   local rc=$?
   [ "$_e_was_set" -eq 1 ] && set -e || true
   rm -f "$schema"
