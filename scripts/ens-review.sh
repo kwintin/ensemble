@@ -40,6 +40,8 @@ test_mode_for() { # ENDPOINT -> mode or empty
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"; [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"' EXIT
 
 RO_BEFORE="$(git status --porcelain 2>/dev/null || true)"
+RO_UNTRACKED_BEFORE=()
+while IFS= read -r -d '' f; do RO_UNTRACKED_BEFORE+=("$f"); done < <(git ls-files --others --exclude-standard -z 2>/dev/null)
 
 # dispatch each reviewer in the background
 # NOTE: endpoint ids are used as temp-file names; the roster schema is name@adapter (no '/').
@@ -57,10 +59,14 @@ if [ "$RO_BEFORE" != "$RO_AFTER" ]; then
   # changed/new porcelain lines present after but not before; strip the 3-char status prefix
   RO_FILES="$(comm -13 <(printf '%s\n' "$RO_BEFORE" | sort) <(printf '%s\n' "$RO_AFTER" | sort) | sed 's/^...//' | tr '\n' ',')"
   git checkout -- . 2>/dev/null || true   # revert tracked modifications
-  # remove ONLY newly-appeared untracked files (preserve the user's pre-existing untracked files)
-  printf '%s\n' "$RO_AFTER" | grep '^?? ' | sed 's/^?? //' | while IFS= read -r f; do
-    printf '%s\n' "$RO_BEFORE" | grep -qxF "?? $f" || rm -f "$f"
-  done
+  # remove ONLY newly-appeared untracked files (NUL-safe; preserves pre-existing untracked files)
+  while IFS= read -r -d '' f; do
+    _skip=0
+    for _b in ${RO_UNTRACKED_BEFORE[@]+"${RO_UNTRACKED_BEFORE[@]}"}; do
+      [ "$_b" = "$f" ] && { _skip=1; break; }
+    done
+    [ "$_skip" -eq 0 ] && rm -f -- "$f"
+  done < <(git ls-files --others --exclude-standard -z 2>/dev/null)
 fi
 
 python3 - "$WORK" "$ROSTER" "$RO_VIOLATION" "$RO_FILES" "${REVIEWERS[@]}" <<'PY'

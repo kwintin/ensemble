@@ -168,4 +168,12 @@ clean="$(cd "$rotmp" && git status --porcelain)"
 check "mutation reverted (tree clean after)" 0 0 "" "$clean"
 rm -rf "$rotmp"
 
+rotmp2="$(mktemp -d)"; ( cd "$rotmp2" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RM" "$rotmp2/roster.json"; ( cd "$rotmp2" && echo keep > keep.txt )   # pre-existing untracked
+out="$(cd "$rotmp2" && printf hi | ENSEMBLE_ROSTER="$rotmp2/roster.json" ENS_TEST_MODES='a@codex=mutate' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "pre-existing untracked preserved (keep.txt)" 0 0 "1" "$([ -f "$rotmp2/keep.txt" ] && echo 1 || echo 0)"
+check "reviewer mutation removed (probe gone)" 0 0 "1" "$([ ! -f "$rotmp2/ens_review_mutation_probe.tmp" ] && echo 1 || echo 0)"
+check "violation still exit 5 with pre-existing untracked" 5 "$rc"
+rm -rf "$rotmp2"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
