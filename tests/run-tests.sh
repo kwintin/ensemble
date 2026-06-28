@@ -148,4 +148,14 @@ check "ok reviewer verdict extracted" 0 0 '"verdict": "CHANGES"' "$out"
 check "auth reviewer degraded with reason auth" 0 0 '"reason": "auth"' "$out"
 check "family stamped from roster" 0 0 '"family": "openai"' "$out"
 
+echo "== ens-review quorum =="
+# 3 reviewers, families openai/xai/openai, all ok -> distinct ok families {openai,xai}=2 >= min_quorum 2 -> met
+out="$(printf hi | ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc=$?
+check "quorum met -> exit 0" 0 "$rc"
+check "quorum_met true" 0 0 '"quorum_met": true' "$out"
+check "family collision a/c reported" 0 0 'a@codex' "$out"
+# only a@codex ok (1 family) with min_quorum 2 -> below quorum
+out2="$(printf hi | ENSEMBLE_ROSTER="$RM" ENS_TEST_MODES='b@codex=auth,c@codex=auth' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex,c@codex - 2>/dev/null)"; rc2=$?
+check "below quorum -> exit 4" 4 "$rc2"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

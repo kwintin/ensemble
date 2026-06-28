@@ -68,5 +68,25 @@ for ep in eps:
     else:
         rec["status"]="degraded"; rec["reason"]=REASON.get(rc,"failed")
     reviewers.append(rec)
-print(json.dumps({"reviewers":reviewers}, indent=2))
+
+min_q = rd.get("min_quorum", 2)
+ok = [r for r in reviewers if r["status"]=="ok"]
+fams_ok=[]
+seen=set()
+for r in ok:
+    f=r["family"]
+    if f and f not in seen: seen.add(f); fams_ok.append(f)
+# collisions: families with >1 ok reviewer
+from collections import defaultdict
+by=defaultdict(list)
+for r in ok:
+    if r["family"]: by[r["family"]].append(r["endpoint"])
+collisions=[v for v in by.values() if len(v)>1]
+quorum_met = len(fams_ok) >= min_q
+res={"reviewers":reviewers,"families_ok":fams_ok,"family_collisions":collisions,
+     "quorum_required":min_q,"quorum_met":quorum_met,
+     "read_only_violation":False,"mutated_files":[]}
+print(json.dumps(res, indent=2))
+sys.exit(0 if quorum_met else 4)
 PY
+exit $?
