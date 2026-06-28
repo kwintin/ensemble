@@ -40,7 +40,7 @@ codex_health() { # -> ok | auth | missing
   local j; j="$(ens_run_timeout 20 -- codex doctor --json 2>/dev/null)"
   # Stub JSON (Tier-1): {"auth":"ok"}.
   # Real doctor JSON: checks["auth.credentials"]["status"] == "ok".
-  # Support both via python3 parse; fall back to legacy grep on parse failure.
+  # Support both via python3 parse; default to "auth" on any parse failure.
   local auth_ok; auth_ok="$(printf '%s' "$j" | python3 -c '
 import sys, json
 try:

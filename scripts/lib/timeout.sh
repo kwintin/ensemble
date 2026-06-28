@@ -14,10 +14,8 @@ ens_run_timeout() {
   elif command -v gtimeout >/dev/null 2>&1; then to=gtimeout
   fi
   if [ -n "$to" ]; then
-    "$to" --kill-after=10 "$secs" "$@"
-    local rc=$?
-    [ "$rc" -eq 137 ] && rc=124   # SIGKILL after timeout -> normalize to our timeout code
-    return $rc
+    "$to" "$secs" "$@"   # plain form is portable across GNU/non-GNU timeout; returns 124 on timeout
+    return $?
   fi
   # --- portable fallback (no coreutils timeout available) ---
   if command -v perl >/dev/null 2>&1; then
@@ -45,6 +43,8 @@ try:
     p=subprocess.Popen(cmd, start_new_session=True)
 except FileNotFoundError:
     sys.exit(127)
+except OSError:
+    sys.exit(125)
 try:
     rc=p.wait(timeout=secs)
 except subprocess.TimeoutExpired:

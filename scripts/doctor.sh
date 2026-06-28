@@ -18,6 +18,7 @@ while IFS= read -r ep; do
   [[ "$adapter" =~ ^[a-z0-9_-]+$ ]] || { echo "invalid adapter name '$adapter'" >&2; exit 1; }
   [ -f "$SCRIPTS/adapters/$adapter.sh" ] || { echo "no adapter '$adapter'" >&2; exit 1; }
   source "$SCRIPTS/adapters/$adapter.sh"
+  declare -F "${adapter}_health" >/dev/null || { echo "  $ep: adapter '$adapter' missing ${adapter}_health" >&2; FAIL=1; continue; }
   st="$("${adapter}_health")"
   if [ "$st" = "ok" ]; then
     n="$("${adapter}_list_models" | grep -c . || true)"

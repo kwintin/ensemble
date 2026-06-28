@@ -92,6 +92,8 @@ check "missing codex (127) -> exit 13" 13 "$rc"
 badr="$(mktemp)"; printf '%s' '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","effort":"bad effort","structured_output":"json","enabled":true}]}' > "$badr"
 out="$(printf x | ENSEMBLE_ROSTER="$badr" bash "$ROOT/scripts/model-cli.sh" review --endpoint x@codex - 2>/dev/null)"; rc=$?
 check "invalid effort -> exit 1" 1 "$rc"; rm -f "$badr"
+out="$(printf x | ENSEMBLE_ROSTER=/no/such/roster.json bash "$ROOT/scripts/model-cli.sh" review --endpoint x@codex - 2>/dev/null)"; rc=$?
+check "model-cli missing roster -> clean exit 1" 1 "$rc"
 
 echo "== doctor =="
 out="$(STUB_MODE=ok bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
@@ -100,6 +102,9 @@ out="$(STUB_MODE=auth bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
 check "doctor flags auth -> exit 1" 1 "$rc" "auth" "$out"
 out="$(ENSEMBLE_ROSTER=/no/such/roster.json bash "$ROOT/scripts/doctor.sh" 2>/dev/null)"; rc=$?
 check "doctor missing roster -> exit 1" 1 "$rc"
+badj="$(mktemp)"; printf 'not json' > "$badj"
+out="$(ENSEMBLE_ROSTER="$badj" bash "$ROOT/scripts/doctor.sh" 2>/dev/null)"; rc=$?
+check "doctor invalid-json roster -> exit 1" 1 "$rc"; rm -f "$badj"
 
 echo "== plugin contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
