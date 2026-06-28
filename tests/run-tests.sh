@@ -539,4 +539,50 @@ if errs:
 PY
 check "setup surface contract holds" 0 "$rc"
 
+echo "== gating hooks (§8) =="
+# SessionStart: emits the 3-gate policy + configured reviewers; honors the toggle
+ss="$(echo '{"source":"startup"}' | ENSEMBLE_ROSTER="$ROOT/roster.json" bash "$ROOT/hooks/session-start.sh")"
+check "session-start emits additionalContext" 0 0 '"hookEventName": "SessionStart"' "$ss"
+check "session-start mentions /ensemble:review" 0 0 '/ensemble:review' "$ss"
+check "session-start lists a configured reviewer" 0 0 'gpt-5.5@codex' "$ss"
+ssoff="$(echo '{}' | ENSEMBLE_GATE_REMINDERS=0 bash "$ROOT/hooks/session-start.sh")"
+check "session-start toggled off -> silent" 0 0 "0" "${#ssoff}"
+# PostToolUse: nudges only on spec/plan/design paths
+pw_spec="$(echo '{"tool_name":"Write","tool_input":{"file_path":"/r/docs/specs/x-design.md"}}' | bash "$ROOT/hooks/post-write.sh")"
+check "post-write nudges on a spec path" 0 0 '/ensemble:review' "$pw_spec"
+pw_plan="$(echo '{"tool_input":{"file_path":"/r/notes/feature-plan.md"}}' | bash "$ROOT/hooks/post-write.sh")"
+check "post-write nudges on a *plan*.md basename" 0 0 'hookEventName' "$pw_plan"
+pw_code="$(echo '{"tool_input":{"file_path":"/r/src/main.py"}}' | bash "$ROOT/hooks/post-write.sh")"
+check "post-write silent on a code file" 0 0 "0" "${#pw_code}"
+pw_off="$(echo '{"tool_input":{"file_path":"/r/docs/specs/x.md"}}' | ENSEMBLE_GATE_REMINDERS=0 bash "$ROOT/hooks/post-write.sh")"
+check "post-write toggled off -> silent" 0 0 "0" "${#pw_off}"
+pw_glob="$(echo '{"tool_input":{"file_path":"/r/RFC-1.txt"}}' | ENSEMBLE_GATE_GLOBS='*RFC*' bash "$ROOT/hooks/post-write.sh")"
+check "post-write honors custom globs" 0 0 'hookEventName' "$pw_glob"
+pw_bad="$(printf 'not json' | bash "$ROOT/hooks/post-write.sh")"; rc=$?
+check "post-write survives garbage stdin -> rc 0, silent" 0 "$rc"
+check "post-write garbage -> no output" 0 0 "0" "${#pw_bad}"
+
+echo "== hooks surface contract =="
+python3 - "$ROOT" <<'PY'; rc=$?
+import os,sys,json
+root=sys.argv[1]; errs=[]
+hp=os.path.join(root,"hooks","hooks.json")
+if not os.path.isfile(hp): errs.append("missing hooks/hooks.json")
+else:
+    try: h=json.load(open(hp))
+    except Exception as e: errs.append("hooks.json invalid: %s"%e); h={}
+    hk=(h or {}).get("hooks",{})
+    if "SessionStart" not in hk: errs.append("no SessionStart hook")
+    pt=hk.get("PostToolUse",[])
+    if not any(m.get("matcher")=="Write|Edit" for m in pt if isinstance(m,dict)): errs.append("no PostToolUse Write|Edit matcher")
+    blob=json.dumps(h)
+    for s in ("session-start.sh","post-write.sh"):
+        if s not in blob: errs.append("hooks.json does not wire "+s)
+for s in ("hooks/session-start.sh","hooks/post-write.sh"):
+    if not os.access(os.path.join(root,s), os.X_OK): errs.append(s+" not executable")
+if errs:
+    [print("  -",e) for e in errs]; sys.exit(1)
+PY
+check "hooks surface contract holds" 0 "$rc"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
