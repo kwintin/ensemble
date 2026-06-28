@@ -50,8 +50,10 @@ case "${STUB_MODE:-ok}" in
     exit 127
     ;;
   *)
-    # Default ok: emit a review with CHANGES sentinel
-    printf 'READ-ONLY REVIEW completed.\n\nThe code looks mostly fine but has a minor issue.\n\n===VERDICT=== CHANGES\n===END===\n'
+    # Default ok: emit a review with CHANGES sentinel. Includes generic words that
+    # are SUB-tokens of model ids (build/medium/pro) to prove the council scrub does
+    # not over-scrub them.
+    printf 'READ-ONLY REVIEW completed.\n\nThe build has a medium-severity issue worth a pro review.\n\n===VERDICT=== CHANGES\n===END===\n'
     exit 0
     ;;
 esac

@@ -367,6 +367,10 @@ check "council exposes peer block for inspection" 0 0 "1" "$([ -f "$dbg/peer.txt
 check "council scrubbed model name 'vibe' from peer block" 0 "$(grep -qi 'vibe' "$dbg/peer.txt" && echo 1 || echo 0)"
 check "council scrubbed family 'mistral' from peer block" 0 "$(grep -qi 'mistral' "$dbg/peer.txt" && echo 1 || echo 0)"
 check "council peer block uses anonymized labels" 0 0 "REVIEW A" "$(cat "$dbg/peer.txt" 2>/dev/null)"
+# generic words that are sub-tokens of model ids (build/medium/pro) must SURVIVE (no over-scrub)
+check "council kept generic word 'medium' (not over-scrubbed)" 0 0 "medium" "$(cat "$dbg/peer.txt" 2>/dev/null)"
+check "council kept generic word 'build'" 0 0 "build" "$(cat "$dbg/peer.txt" 2>/dev/null)"
+check "council kept generic word 'pro'" 0 0 "pro" "$(cat "$dbg/peer.txt" 2>/dev/null)"
 rm -rf "$cot3" "$dbg"
 
 echo "== review surface contract =="

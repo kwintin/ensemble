@@ -74,20 +74,21 @@ import json,sys,re,hashlib
 r1=json.load(open(sys.argv[1],encoding="utf-8"))
 reviewers=r1.get("reviewers",[])
 ok=[r for r in reviewers if r.get("status")=="ok"]
-# deny-list of self-identifying tokens (endpoint model/adapter, family, vendors)
-deny=set()
+# deny-list of self-identifying tokens (endpoint model/adapter, family, vendors).
+# Match each FULL token as a word-boundary literal — do NOT split model ids into
+# sub-tokens, or generic words like "medium"/"pro"/"flash" (from mistral-medium-3.5,
+# deepseek-v4-pro, gemini-3.5-flash) would be scrubbed and corrupt e.g. [medium] severities.
+phrases=set()
 for r in reviewers:
     ep=r.get("endpoint") or ""
     if "@" in ep:
-        m,a=ep.split("@",1); deny.add(m); deny.add(a)
-    if r.get("family"): deny.add(r["family"])
-deny |= {"grok","vibe","codex","agy","opencode","kilo","gemini","mistral","deepseek",
-         "glm","claude","gpt","openai","google","anthropic","xai","zai","z-ai","antigravity"}
-toks=set()
-for d in deny:
-    for t in re.split(r"[^A-Za-z0-9]+", str(d).lower()):
-        if len(t)>=3: toks.add(re.escape(t))
-SCRUB=re.compile(r"(?i)\b(%s)\b" % "|".join(sorted(toks,key=len,reverse=True))) if toks else None
+        m,a=ep.split("@",1); phrases.add(m); phrases.add(a)
+    if r.get("family"): phrases.add(r["family"])
+# curated vendor/model names — each is itself identifying, never a generic English word
+phrases |= {"grok","vibe","codex","agy","opencode","kilo","gemini","mistral","deepseek",
+            "glm","claude","gpt","openai","google","anthropic","xai","zai","z-ai","antigravity"}
+phrases={p for p in (str(x).strip().lower() for x in phrases) if len(p)>=3}
+SCRUB=re.compile(r"(?i)\b(%s)\b" % "|".join(re.escape(p) for p in sorted(phrases,key=len,reverse=True))) if phrases else None
 def scrub(s): return SCRUB.sub("[reviewer]", s) if SCRUB else s
 def is_json(s):
     try: json.loads(s); return True
@@ -140,15 +141,14 @@ R2="$WORK/r2.json"
 if [ "$r2rc" -ne 0 ] && [ "$r2rc" -ne 4 ] && [ "$r2rc" -ne 5 ]; then cat "$R2" 2>/dev/null; exit "$r2rc"; fi
 
 # ---- EMIT the council object (covers 0/4/5; round2 carries any read-only flag) ----
-if python3 - "$R1" "$R2" "$LABELS" <<'PY'
+# Each field degrades to an error envelope rather than aborting, so the chairman
+# always receives the wrapper (round-1 work is never discarded on a parse hiccup).
+python3 - "$R1" "$R2" "$LABELS" <<'PY'
 import json,sys
-try:
-    out={"mode":"council",
-         "anon_labels":json.load(open(sys.argv[3],encoding="utf-8")),
-         "round1":json.load(open(sys.argv[1],encoding="utf-8")),
-         "round2":json.load(open(sys.argv[2],encoding="utf-8"))}
-except Exception as e:
-    sys.stderr.write("ens-council: could not assemble council output: %s\n" % e); sys.exit(70)
-print(json.dumps(out, indent=2))
+def load(p):
+    try: return json.load(open(p,encoding="utf-8"))
+    except Exception as e: return {"error":"unparseable: %s" % e}
+print(json.dumps({"mode":"council","anon_labels":load(sys.argv[3]),
+                  "round1":load(sys.argv[1]),"round2":load(sys.argv[2])}, indent=2))
 PY
-then exit "$r2rc"; else die "failed to assemble council output"; fi
+exit "$r2rc"
