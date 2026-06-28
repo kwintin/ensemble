@@ -176,6 +176,20 @@ check "reviewer mutation removed (probe gone)" 0 0 "1" "$([ ! -f "$rotmp2/ens_re
 check "violation still exit 5 with pre-existing untracked" 5 "$rc"
 rm -rf "$rotmp2"
 
+# C1: a reviewer mutation must NOT destroy the user's uncommitted tracked edit
+ro3="$(mktemp -d)"; ( cd "$ro3" && git init -q && printf 'orig\n' > f.txt && git add f.txt && git -c user.email=t@t -c user.name=t commit -q -m init && printf 'USER-EDIT\n' > f.txt )
+cp "$RM" "$ro3/roster.json"
+out="$(cd "$ro3" && printf hi | ENSEMBLE_ROSTER="$ro3/roster.json" ENS_TEST_MODES='a@codex=mutate' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "user uncommitted tracked edit preserved" 0 0 "USER-EDIT" "$(cat "$ro3/f.txt")"
+check "reviewer untracked file removed" 0 0 "1" "$([ ! -f "$ro3/ens_review_mutation_probe.tmp" ] && echo 1 || echo 0)"
+check "untracked violation -> exit 5" 5 "$rc"; rm -rf "$ro3"
+# C2: a reviewer overwriting an already-dirty tracked file must be DETECTED and the user's content restored
+ro4="$(mktemp -d)"; ( cd "$ro4" && git init -q && printf 'orig\n' > tracked.txt && git add tracked.txt && git -c user.email=t@t -c user.name=t commit -q -m init && printf 'USER-WIP\n' > tracked.txt )
+cp "$RM" "$ro4/roster.json"
+out="$(cd "$ro4" && printf hi | ENSEMBLE_ROSTER="$ro4/roster.json" ENS_TEST_MODES='a@codex=mutate_tracked' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "content overwrite of dirty tracked file detected -> exit 5" 5 "$rc"
+check "user WIP restored after reviewer overwrite" 0 0 "USER-WIP" "$(cat "$ro4/tracked.txt")"; rm -rf "$ro4"
+
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
 import os,sys
