@@ -1,0 +1,7 @@
+{
+  "category": "payment-logic",
+  "verdict": "CHANGES",
+  "must_match": ["float|floating[- ]point|precision|rounding error|0\\.30000", "decimal|integer cents|round|cents"],
+  "must_match_mode": "all",
+  "note": "float money arithmetic loses precision; expect Decimal/integer-cents"
+}

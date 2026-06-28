@@ -1,0 +1,7 @@
+{
+  "category": "bugs",
+  "verdict": "CHANGES",
+  "must_match": ["mutable default|default argument|shared (across|between)|persists|alias|=\\s*None"],
+  "must_match_mode": "all",
+  "note": "mutable default argument shared across invocations"
+}

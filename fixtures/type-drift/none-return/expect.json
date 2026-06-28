@@ -1,0 +1,7 @@
+{
+  "category": "type-drift",
+  "verdict": "CHANGES",
+  "must_match": ["none|nonetype|attributeerror|returns nothing|implicit(ly)? return|optional|null"],
+  "must_match_mode": "all",
+  "note": "find may return None; caller assumes a str and calls .upper()"
+}

@@ -9,11 +9,11 @@ Offload ONE well-scoped unit to the best-fit executor model, **verify it yoursel
 
 ## The loop
 1. **Contract first — you own it.** Before delegating, write/define the acceptance gate (the tests or checks that mean *done*). This is both the executor's target and YOUR verification oracle. Put shared rules in a repo-root `AGENTS.md` so the executor follows what you follow.
-2. **Route by strength.** Pick the executor endpoint whose `strengths` (a model property) best fit the unit; honor `role: executor|both` and the latency tier. Consult the roster:
+2. **Route by strength.** Pick the executor endpoint whose `strengths` (a model property) best fit the unit; honor `role: executor|both` and the latency tier. Consult the roster (resolve it via `roster-path.sh` so you read the user's calibrated roster, not the shipped default):
    ```bash
-   bash -c 'source "$CLAUDE_PLUGIN_ROOT/scripts/lib/roster.sh"; ens_executors "${ENSEMBLE_ROSTER:-$CLAUDE_PLUGIN_ROOT/roster.json}"'  # id <tab> strengths <tab> latency
+   bash -c 'source "$CLAUDE_PLUGIN_ROOT/scripts/lib/roster-path.sh"; source "$CLAUDE_PLUGIN_ROOT/scripts/lib/roster.sh"; ens_executors "$ROSTER"'  # id <tab> strengths <tab> latency
    ```
-   **State why** you routed where you did. `--endpoint id` / `--strength tag` override your judgment.
+   Strengths may be **scored** `category:score` tags (from `/ensemble:calibrate`, e.g. `injection:0.88`) or plain bare tags (uncalibrated priors). Map the unit to a category and **prefer the executor with the highest `<category>:<score>`**; treat a bare tag as a weaker prior than any scored tag, and an absent tag as no signal. **State why** you routed where you did. `--endpoint id` / `--strength tag` override your judgment.
 3. **Delegate one unit.** Run the engine — it creates an isolated worktree, runs the executor write-enabled in it, and returns a JSON result; the worktree is LEFT in place:
    ```bash
    "$CLAUDE_PLUGIN_ROOT/scripts/ens-delegate.sh" run --endpoint <id> --prompt-file <TASK>

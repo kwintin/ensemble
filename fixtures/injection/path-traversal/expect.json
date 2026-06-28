@@ -1,0 +1,7 @@
+{
+  "category": "injection",
+  "verdict": "CHANGES",
+  "must_match": ["path traversal|directory traversal|\\.\\./|escape", "normaliz|realpath|abspath|sanitiz|basename|commonpath|startswith"],
+  "must_match_mode": "all",
+  "note": "user_path can traverse out of base_dir; expect normalization/containment check"
+}

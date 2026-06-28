@@ -633,4 +633,6 @@ if errs:
 PY
 check "hooks surface contract holds" 0 "$rc"
 
+source "$HERE/calib-tests.sh"
+
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

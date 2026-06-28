@@ -1,0 +1,7 @@
+{
+  "category": "injection",
+  "verdict": "CHANGES",
+  "must_match": ["sql injection|injection", "parameteriz|prepared|placeholder|bind|\\?|%s"],
+  "must_match_mode": "all",
+  "note": "raw SQL string built from user input; expect parameterized query advice"
+}

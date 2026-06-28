@@ -1,0 +1,7 @@
+{
+  "category": "injection",
+  "verdict": "CHANGES",
+  "must_match": ["command injection|shell injection|injection|os\\.system", "subprocess|shlex|quote|sanitiz|allowlist|whitelist|escap"],
+  "must_match_mode": "all",
+  "note": "unsanitized input into os.system; expect subprocess/shlex advice"
+}

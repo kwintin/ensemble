@@ -1,0 +1,7 @@
+{
+  "category": "bugs",
+  "verdict": "CHANGES",
+  "must_match": ["empty|zero|zerodivision|len\\(xs\\)\\s*==\\s*0|divide|division"],
+  "must_match_mode": "all",
+  "note": "ZeroDivisionError when xs is empty"
+}

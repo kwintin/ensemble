@@ -1,0 +1,7 @@
+{
+  "category": "concurrency",
+  "verdict": "CHANGES",
+  "must_match": ["race condition|race|lock|mutex|atomic|synchron|lost update|not thread-?safe|read-modify-write"],
+  "must_match_mode": "all",
+  "note": "shared counter incremented without a lock; race condition / lost updates"
+}

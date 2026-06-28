@@ -1,0 +1,7 @@
+{
+  "category": "perf",
+  "verdict": "CHANGES",
+  "must_match": ["o\\(n\\^?2\\)|quadratic|n\\s*\\*\\s*n|set\\(|membership|hash|nested"],
+  "must_match_mode": "all",
+  "note": "O(n^2) membership; convert b to a set for O(1) lookups"
+}

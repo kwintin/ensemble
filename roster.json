@@ -37,7 +37,7 @@
       "role": "both",
       "read_only_mode": "directive+worktree",
       "structured_output": "sentinel",
-      "strengths": ["payment-security", "injection-patterns"],
+      "strengths": ["payment-logic", "injection"],
       "latency_tier": "slow",
       "enabled": true
     },
@@ -50,7 +50,7 @@
       "role": "both",
       "read_only_mode": "directive+worktree",
       "structured_output": "sentinel",
-      "strengths": ["frontier-logic", "injection-security"],
+      "strengths": ["frontier-logic", "injection"],
       "latency_tier": "fast",
       "enabled": true
     },

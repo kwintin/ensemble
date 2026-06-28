@@ -1,0 +1,7 @@
+{
+  "category": "payment-logic",
+  "verdict": "CHANGES",
+  "must_match": ["round|fractional cent|sub-?cent|truncat|integer|decimal|precision"],
+  "must_match_mode": "all",
+  "note": "tax produces fractional cents that are never rounded to an integer amount"
+}

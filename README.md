@@ -29,6 +29,11 @@ Two engines over one hardened core:
 - **Delegate** — route a well-scoped unit of work to the strength-matched model,
   run it in an isolated git worktree, and verify against a contract in a clean
   state before merging.
+- **Calibrate** — ground each model's routing `strengths` in measurement: run a
+  category-tagged fixture corpus through every enabled reviewer's real review path,
+  score per-category hit-rate, and propose a roster rewrite (scored `category:score`
+  tags, *measured on your fixtures*) for your confirmation. A prior you can stand
+  behind, not a leaderboard.
 
 The unit of selection is a **model endpoint** — *this model, reached via this
 transport CLI* — so reviewer independence and strength routing track the model

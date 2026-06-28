@@ -1,0 +1,7 @@
+{
+  "category": "bugs",
+  "verdict": "CHANGES",
+  "must_match": ["off-?by-?one|index\\s*error|out of range|past the end|i\\s*\\+\\s*1|len\\(a\\)\\s*-\\s*1|bounds"],
+  "must_match_mode": "all",
+  "note": "a[i+1] is out of range on the final iteration"
+}

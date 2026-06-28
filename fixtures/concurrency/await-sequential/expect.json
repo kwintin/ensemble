@@ -1,0 +1,7 @@
+{
+  "category": "concurrency",
+  "verdict": "CHANGES",
+  "must_match": ["gather|asyncio\\.gather|create_task|concurren|serial|sequential|await in (a )?loop|one at a time|parallel"],
+  "must_match_mode": "all",
+  "note": "awaits inside the loop serialize the requests; use asyncio.gather for concurrency"
+}

@@ -1,0 +1,7 @@
+{
+  "category": "type-drift",
+  "verdict": "CHANGES",
+  "must_match": ["return type|annotation|-> ?int|returns a? ?str|type mismatch|int\\(|not an int|string"],
+  "must_match_mode": "all",
+  "note": "parse_count is annotated -> int but returns str; downstream arithmetic breaks"
+}
