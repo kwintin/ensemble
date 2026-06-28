@@ -48,13 +48,30 @@ for ep in "${REVIEWERS[@]}"; do
 done
 wait
 
-# emit intermediate JSON: [{endpoint, rc}]  (enriched in later tasks)
-python3 - "$WORK" "${REVIEWERS[@]}" <<'PY'
-import json,os,sys
-work=sys.argv[1]; eps=sys.argv[2:]
-out=[]
+python3 - "$WORK" "$ROSTER" "${REVIEWERS[@]}" <<'PY'
+import json,os,sys,re
+work,roster=sys.argv[1],sys.argv[2]; eps=sys.argv[3:]
+rd=json.load(open(roster, encoding="utf-8"))
+fam={e["id"]:e.get("family") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
+REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing"}
+reviewers=[]
 for ep in eps:
-    rc=open(os.path.join(work,ep+".rc")).read().strip() if os.path.exists(os.path.join(work,ep+".rc")) else "1"
-    out.append({"endpoint":ep,"rc":int(rc)})
-print(json.dumps({"reviewers":out}, indent=2))
+    p=os.path.join(work,ep)
+    rc=int(open(p+".rc").read().strip()) if os.path.exists(p+".rc") else 1
+    rec={"endpoint":ep,"family":fam.get(ep),"status":"ok","reason":None,"verdict":None,"findings":[]}
+    if rc==0:
+        try:
+            raw=open(p+".out", encoding="utf-8").read()
+            m=re.search(r'\{.*\}', raw, re.DOTALL)
+            if m:
+                v=json.loads(m.group())
+                rec["verdict"]=v.get("verdict"); rec["findings"]=v.get("findings") or []
+            else:
+                raise ValueError("no JSON object found")
+        except Exception:
+            rec["status"]="degraded"; rec["reason"]="unparseable"
+    else:
+        rec["status"]="degraded"; rec["reason"]=REASON.get(rc,"failed")
+    reviewers.append(rec)
+print(json.dumps({"reviewers":reviewers}, indent=2))
 PY
