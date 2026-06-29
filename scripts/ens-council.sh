@@ -63,7 +63,7 @@ PY
 
 # ---- ROUND 1 ----
 R1="$WORK/r1.json"
-"$SCRIPTS/ens-review.sh" ${REV_ARGS[@]+"${REV_ARGS[@]}"} --prompt-file "$PROMPT_FILE" > "$R1"; r1rc=$?
+"$SCRIPTS/ens-review.sh" --op round-1 ${REV_ARGS[@]+"${REV_ARGS[@]}"} --prompt-file "$PROMPT_FILE" > "$R1"; r1rc=$?
 if [ "$r1rc" -eq 5 ]; then emit_partial "$R1" "read-only violation in round 1; council not convened"; exit 5; fi
 if [ "$r1rc" -ne 0 ] && [ "$r1rc" -ne 4 ]; then cat "$R1" 2>/dev/null; exit "$r1rc"; fi
 
@@ -136,7 +136,7 @@ PEERPROMPT="$WORK/peerprompt.txt"
 
 # ---- ROUND 2 (peer round): the same round-1 OK reviewers ----
 R2="$WORK/r2.json"
-"$SCRIPTS/ens-review.sh" --reviewers "$(cat "$OKEPS")" --prompt-file "$PEERPROMPT" > "$R2"; r2rc=$?
+"$SCRIPTS/ens-review.sh" --op peer --reviewers "$(cat "$OKEPS")" --prompt-file "$PEERPROMPT" > "$R2"; r2rc=$?
 # unexpected (non-contract) exit -> propagate raw rather than mis-emit
 if [ "$r2rc" -ne 0 ] && [ "$r2rc" -ne 4 ] && [ "$r2rc" -ne 5 ]; then cat "$R2" 2>/dev/null; exit "$r2rc"; fi
 

@@ -459,6 +459,19 @@ check "council kept generic word 'build'" 0 0 "build" "$(cat "$dbg/peer.txt" 2>/
 check "council kept generic word 'pro'" 0 0 "pro" "$(cat "$dbg/peer.txt" 2>/dev/null)"
 rm -rf "$cot3" "$dbg"
 
+echo "== ens-council provenance =="
+CLOUT="$(STUB_MODE=ok bash "$ROOT/scripts/ens-council.sh" --prompt-file "$ROOT/README.md" 2>&1 1>/dev/null)"
+check "council labels round-1" 0 0 "▶ round-1 gpt-5.5@codex" "$CLOUT"
+check "council labels peer" 0 0 "▶ peer " "$CLOUT"
+# anonymity invariant: provenance tokens must NOT enter the reviewer prompts
+# run with debug dir so we can inspect the peer prompt built for round 2
+cot4="$(mktemp -d)"; ( cd "$cot4" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+dbg4="$(mktemp -d)"
+( cd "$cot4" && STUB_MODE=ok ENS_COUNCIL_DEBUG_DIR="$dbg4" bash "$ROOT/scripts/ens-council.sh" --prompt-file "$ROOT/README.md" >/dev/null 2>/dev/null )
+prov_in_peer=0; grep -qF '▶' "$dbg4/peer.txt" 2>/dev/null && prov_in_peer=1; grep -qF '◀' "$dbg4/peer.txt" 2>/dev/null && prov_in_peer=1
+check "provenance tokens not in peer prompt (anonymity)" 0 "$prov_in_peer"
+rm -rf "$cot4" "$dbg4"
+
 echo "== ens_executors selection =="
 ex="$(ens_executors "$ROOT/tests/fixtures/roster-multi.json" | cut -f1 | tr '\n' ' ')"
 check "ens_executors lists role=both (b@codex)" 0 0 "b@codex" "$ex"
