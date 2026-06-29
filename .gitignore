@@ -14,3 +14,8 @@ __pycache__/
 # macOS
 .DS_Store
 **/.DS_Store
+
+# internal docs — kept locally, not published
+.serena/
+docs/specs/
+docs/superpowers/
