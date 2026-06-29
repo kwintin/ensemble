@@ -399,6 +399,25 @@ check "uncommitted tracked WIP replayed into review copy" 0 0 '"wip_replayed": "
 check "WIP review run reaches quorum -> exit 0" 0 "$rc"
 check "WIP review left user tree untouched" 0 0 "v2-uncommitted" "$(cat "$ro9/a.txt")"; rm -rf "$ro9"
 
+echo "== ens-review provenance =="
+# a normal review emits a ▶ and a ◀ per reviewer, with the verdict in the ◀
+RVOUT="$(STUB_MODE=ok bash "$ROOT/scripts/ens-review.sh" --prompt-file "$ROOT/README.md" 2>&1 1>/dev/null)"
+check "review ▶ per reviewer" 0 0 "▶ review gpt-5.5@codex · cli=codex" "$RVOUT"
+check "review ◀ carries verdict" 0 0 "◀ review gpt-5.5@codex → CHANGES (1 findings)" "$RVOUT"
+# cli/model now in the JSON records
+RVJSON="$(STUB_MODE=ok bash "$ROOT/scripts/ens-review.sh" --prompt-file "$ROOT/README.md" 2>/dev/null)"
+check "review JSON carries cli" 0 0 '"cli": "codex"' "$RVJSON"
+check "review JSON carries model" 0 0 '"model": "gpt-5.5"' "$RVJSON"
+# exit code preserved with provenance ON: an auth failure on all reviewers -> quorum not met -> 4
+STUB_MODE=auth bash "$ROOT/scripts/ens-review.sh" --prompt-file "$ROOT/README.md" >/dev/null 2>&1; rc=$?
+check "review exit 4 preserved (provenance on)" 4 "$rc"
+# ◀ shows skip: for an availability failure
+SKOUT="$(STUB_MODE=auth bash "$ROOT/scripts/ens-review.sh" --prompt-file "$ROOT/README.md" 2>&1 1>/dev/null)"
+check "review ◀ skip: on auth" 0 0 "→ skip:auth" "$SKOUT"
+# --op relabels the op token (used by council)
+OPOUT="$(STUB_MODE=ok bash "$ROOT/scripts/ens-review.sh" --op round-1 --prompt-file "$ROOT/README.md" 2>&1 1>/dev/null)"
+check "review --op relabels" 0 0 "▶ round-1 gpt-5.5@codex" "$OPOUT"
+
 echo "== ens-council (two-round de-biased review) =="
 cot="$(mktemp -d)"; ( cd "$cot" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
 cp "$RM" "$cot/roster.json"

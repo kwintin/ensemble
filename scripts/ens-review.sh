@@ -5,6 +5,8 @@ SCRIPTS="$ROOT/scripts"
 source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped)
 source "$SCRIPTS/lib/roster.sh"
 source "$SCRIPTS/lib/ephemeral-ignore.sh"   # ens_write_ephemeral_ignore (shared denylist)
+source "$SCRIPTS/lib/provenance.sh"
+PROV_OP="review"
 
 die() { echo "ens-review: $*" >&2; exit 1; }
 
@@ -56,6 +58,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --reviewers) SUBSET="$2"; shift 2 ;;
     --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
+    --op) PROV_OP="$2"; shift 2 ;;
     -) PROMPT_FILE="$(mktemp)"; cat > "$PROMPT_FILE"; STDIN_TMP="$PROMPT_FILE"; shift ;;
     *) die "unknown arg '$1'" ;;
   esac
@@ -151,10 +154,11 @@ fi
 
 # dispatch each reviewer in the background, cwd = the disposable worktree
 for ep in "${REVIEWERS[@]}"; do
+  ens_provenance "$PROV_OP" "$ep" "$ROSTER"
   mode="$(test_mode_for "$ep")"
   ( # fail closed: never run a reviewer in the user's real tree if the isolated cwd is unavailable
     cd "$REVIEW_CWD" || { echo "ens-review: cannot enter review dir" >"$WORK/$ep.err"; echo 125 >"$WORK/$ep.rc"; exit; }
-    STUB_MODE="${mode:-ok}" "$SCRIPTS/model-cli.sh" review --endpoint "$ep" --prompt-file "$PROMPT_FILE" \
+    STUB_MODE="${mode:-${STUB_MODE:-ok}}" "$SCRIPTS/model-cli.sh" review --endpoint "$ep" --prompt-file "$PROMPT_FILE" \
       >"$WORK/$ep.out" 2>"$WORK/$ep.err"; echo $? >"$WORK/$ep.rc" ) &
   PIDS+=("$!")
 done
@@ -183,8 +187,12 @@ try:
 except Exception:
     rd={}
 fam={e["id"]:e.get("family") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
+adp={e["id"]:e.get("adapter") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
+mdl={e["id"]:e.get("model")   for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
+SKIP={"quota","auth","timeout","missing","empty","isolation-failed"}
 REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing",125:"isolation-failed"}
 _ok=re.compile(r'^[A-Za-z0-9._@-]+$')
+_outcomes=open(os.path.join(work,".outcomes"),"w",encoding="utf-8")
 reviewers=[]
 for ep in eps:
     # defense in depth; bash already validated, but never build a path from a bad id
@@ -192,7 +200,8 @@ for ep in eps:
         continue
     p=os.path.join(work,ep)
     rc=int(open(p+".rc").read().strip()) if os.path.exists(p+".rc") else 1
-    rec={"endpoint":ep,"family":fam.get(ep),"status":"ok","reason":None,"verdict":None,"findings":[],"review":""}
+    rec={"endpoint":ep,"cli":adp.get(ep),"model":mdl.get(ep),"family":fam.get(ep),
+         "status":"ok","reason":None,"verdict":None,"findings":[],"review":""}
     if rc==0:
         try:
             v=json.load(open(p+".out", encoding="utf-8"))
@@ -205,6 +214,12 @@ for ep in eps:
     else:
         rec["status"]="degraded"; rec["reason"]=REASON.get(rc,"failed")
     reviewers.append(rec)
+    if rec["status"]=="ok":
+        _oc="%s (%d findings)" % (rec["verdict"], len(rec["findings"]))
+    else:
+        _oc=("skip:%s" if rec["reason"] in SKIP else "error:%s") % rec["reason"]
+    _outcomes.write("%s\t%s\n" % (ep,_oc))
+_outcomes.close()
 
 mq=rd.get("min_quorum",2)
 min_q = mq if (isinstance(mq,int) and not isinstance(mq,bool) and mq>=1) else 2
@@ -241,4 +256,10 @@ print(json.dumps(res, indent=2))
 if ro_v=="1": sys.exit(5)
 sys.exit(0 if quorum_met else 4)
 PY
-exit $?
+py_rc=$?
+if [ -f "$WORK/.outcomes" ]; then
+  while IFS=$'\t' read -r _ep _oc; do
+    [ -n "$_ep" ] && ens_provenance_result "$PROV_OP" "$_ep" "$_oc"
+  done < "$WORK/.outcomes"
+fi
+exit "$py_rc"
