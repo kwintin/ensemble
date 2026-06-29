@@ -1,5 +1,3 @@
-<img src="docs/assets/hero.jpg" alt="Ensemble — a conductor figure in orange directing four jewel-toned model-figures reaching toward a shared point of light" width="820">
-
 # Ensemble
 
 ### Many models. One conductor.
@@ -8,6 +6,8 @@ A Claude Code plugin that turns a roster of independent AI model CLIs into an
 **ensemble** — dispatched in parallel for consensus review, or routed by strength
 for delegated work. Claude always conducts: it owns requirements, judgement,
 synthesis, and verification.
+
+<img src="docs/assets/hero.jpg" alt="Ensemble — a conductor figure in orange directing four jewel-toned model-figures reaching toward a shared point of light" width="820">
 
 ## What it does
 
