@@ -300,6 +300,15 @@ check "reviewer mutation removed (probe gone)" 0 0 "1" "$([ ! -f "$rotmp2/ens_re
 check "violation still exit 5 with pre-existing untracked" 5 "$rc"
 rm -rf "$rotmp2"
 
+# ephemeral artifacts (bytecode / tool caches) a reviewer produces by RUNNING the code
+# must NOT trip the guard — only a real source edit should (false-positive fix).
+rotmp3="$(mktemp -d)"; ( cd "$rotmp3" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RM" "$rotmp3/roster.json"
+out="$(cd "$rotmp3" && printf hi | ENSEMBLE_ROSTER="$rotmp3/roster.json" ENS_TEST_MODES='a@codex=artifact' bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex,b@codex - 2>/dev/null)"; rc=$?
+check "ephemeral artifacts (__pycache__/.serena) do NOT trip the guard -> exit 0" 0 "$rc"
+check "no false violation flagged for ephemeral artifacts" 0 0 '"read_only_violation": false' "$out"
+rm -rf "$rotmp3"
+
 # C1: a reviewer mutation must NOT destroy the user's uncommitted tracked edit
 ro3="$(mktemp -d)"; ( cd "$ro3" && git init -q && printf 'orig\n' > f.txt && git add f.txt && git -c user.email=t@t -c user.name=t commit -q -m init && printf 'USER-EDIT\n' > f.txt )
 cp "$RM" "$ro3/roster.json"

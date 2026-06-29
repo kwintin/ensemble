@@ -124,10 +124,18 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git -C "$WT" add -A >/dev/null 2>&1 || true
     git -C "$WT" -c core.hooksPath=/dev/null -c user.email=ensemble@local -c user.name=ensemble \
       -c commit.gpgsign=false commit --quiet --no-verify --allow-empty -m ensemble-review-snapshot >/dev/null 2>&1 || true
+    # ephemeral-artifact ignore list: a reviewer that *runs* the code legitimately
+    # produces bytecode / tool caches (__pycache__, .pyc, .serena, .pytest_cache, ...)
+    # which are NOT source edits. Pass it as a per-command core.excludesFile so git omits
+    # these untracked artifacts from --porcelain; a tracked-file edit or a NEW non-ephemeral
+    # file still trips the guard (the real tamper signal). Does not touch the user's repo.
+    RO_IGNORE="$WORK/.ro-ignore"
+    printf '%s\n' '__pycache__/' '*.py[cod]' '.serena/' '.pytest_cache/' '.mypy_cache/' \
+      '.ruff_cache/' '.tox/' '.ipynb_checkpoints/' '.DS_Store' 'node_modules/' > "$RO_IGNORE"
     # capture the post-setup baseline; a reviewer write is any DELTA from it. This is
     # robust even if the snapshot commit failed (baseline would just be non-empty),
     # so a clean reviewer run never false-positives to exit 5.
-    RO_BASELINE="$(git -C "$WT" status --porcelain 2>/dev/null)"
+    RO_BASELINE="$(git -C "$WT" -c core.excludesFile="$RO_IGNORE" status --porcelain 2>/dev/null)"
     REVIEW_CWD="$WT"
   else
     # isolation was expected (we are in a git repo) but could not be created:
@@ -157,9 +165,9 @@ PIDS=()
 # violation = the worktree status CHANGED from the post-setup baseline
 RO_VIOLATION=0
 if [ "$RO_GUARDED" = 1 ]; then
-  if [ "$(git -C "$WT" status --porcelain 2>/dev/null)" != "$RO_BASELINE" ]; then
+  if [ "$(git -C "$WT" -c core.excludesFile="$RO_IGNORE" status --porcelain 2>/dev/null)" != "$RO_BASELINE" ]; then
     RO_VIOLATION=1
-    git -C "$WT" status --porcelain -z 2>/dev/null > "$WORK/.mutated" || true
+    git -C "$WT" -c core.excludesFile="$RO_IGNORE" status --porcelain -z 2>/dev/null > "$WORK/.mutated" || true
   fi
 fi
 
