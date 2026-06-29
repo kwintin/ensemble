@@ -695,6 +695,32 @@ check "doctor prints family/quorum line" 0 0 "Healthy reviewer families: 1 (min_
 check "doctor banner is 'ensemble'" 0 0 "ensemble — doctor" "$DOUT"
 rm -f "$DROST"
 
+echo "== doctor: flaky health probe retry =="
+AGYROST="$(mktemp)"
+cat > "$AGYROST" <<'JSON'
+{"min_quorum":1,"reviewers_default":["gemini-3.5-flash@agy"],"endpoints":[
+ {"id":"gemini-3.5-flash@agy","adapter":"agy","model":"gemini-3.5-flash","family":"google","read_only_mode":"plan","role":"both","structured_output":"sentinel","strengths":["pattern"],"latency_tier":"fast","enabled":true}
+]}
+JSON
+# A probe that fails twice then succeeds must be reported ok (retry recovers it).
+FLAPF="$(mktemp)"; rm -f "$FLAPF"   # counter starts unset (absent file -> 0)
+DOUT="$(STUB_MODE=flap STUB_FLAP_FILE="$FLAPF" STUB_FLAP_FAILS=2 ENS_DOCTOR_RETRY_SLEEP=0 ENSEMBLE_ROSTER="$AGYROST" bash "$ROOT/scripts/doctor.sh" 2>&1)"; drc=$?
+check "doctor retries a flapping probe -> exit 0" 0 "$drc"
+check "doctor reports recovered endpoint as ok" 0 0 "gemini-3.5-flash@agy: ok" "$DOUT"
+check "doctor emits a retry breadcrumb" 0 0 "retrying" "$DOUT"
+# A probe that fails every attempt must STILL be flagged auth (retry is not a mask).
+rm -f "$FLAPF"
+DOUT2="$(STUB_MODE=flap STUB_FLAP_FILE="$FLAPF" STUB_FLAP_FAILS=99 ENS_DOCTOR_RETRY_SLEEP=0 ENSEMBLE_ROSTER="$AGYROST" bash "$ROOT/scripts/doctor.sh" 2>&1)"; drc2=$?
+check "doctor: persistent fail still flagged after retries -> exit 1" 1 "$drc2"
+check "doctor: persistent-fail endpoint reported auth" 0 0 "gemini-3.5-flash@agy: auth" "$DOUT2"
+# Retry must not change the count of probes a HEALTHY endpoint needs (ok accepted
+# on attempt 1 -> no breadcrumb).
+FLAPF2="$(mktemp)"; rm -f "$FLAPF2"
+DOUT3="$(STUB_MODE=flap STUB_FLAP_FILE="$FLAPF2" STUB_FLAP_FAILS=0 ENS_DOCTOR_RETRY_SLEEP=0 ENSEMBLE_ROSTER="$AGYROST" bash "$ROOT/scripts/doctor.sh" 2>&1)"; drc3=$?
+check "doctor: first-try ok -> exit 0" 0 "$drc3"
+check "doctor: healthy endpoint emits no retry breadcrumb" 0 "$([ -n "$(printf '%s' "$DOUT3" | grep -i retrying)" ] && echo 1 || echo 0)"
+rm -f "$AGYROST" "$FLAPF" "$FLAPF2"
+
 echo "== plugin manifest + command surface =="
 python3 - "$ROOT" <<'PY'; rc=$?
 import json, os, sys

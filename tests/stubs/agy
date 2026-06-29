@@ -15,6 +15,13 @@ if [ "$subcmd" = "models" ]; then
   case "${STUB_MODE:-ok}" in
     auth)    echo "please sign in" >&2; exit 1 ;;
     missing) exit 127 ;;
+    flap)
+      # Flaky auth: fail the first STUB_FLAP_FAILS (default 2) calls, then succeed.
+      # State lives in STUB_FLAP_FILE so retries across invocations advance the count.
+      f="${STUB_FLAP_FILE:?flap mode needs STUB_FLAP_FILE}"
+      n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$f"
+      if [ "$n" -le "${STUB_FLAP_FAILS:-2}" ]; then echo "please sign in" >&2; exit 1; fi
+      printf 'Gemini 3.5 Flash (Medium)\n'; exit 0 ;;
     *)
       printf 'Gemini 3.5 Flash (Medium)\n'
       printf 'Gemini 3.5 Flash (Fast)\n'
