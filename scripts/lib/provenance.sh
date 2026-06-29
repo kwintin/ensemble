@@ -30,18 +30,31 @@ for f in fields:
 PY
 }
 
+# Collapse CR/LF/TAB in an assembled line to single spaces, so no interpolated
+# value (reason/detail/roster field) can inject a newline and fabricate a second
+# provenance line in the log. Defense-in-depth: real inputs are already constrained
+# (endpoint ids are validated, model/family come from operator config), but this
+# makes the no-log-injection property self-evident. Uses printf -v + parameter
+# expansion only — no subshell, bash 3.2-safe (macOS).
+_ens_prov_emit() { # FORMAT ARG...   (prints the rendered, sanitized line to stderr)
+  local _fmt="$1"; shift
+  local _line; printf -v _line "$_fmt" "$@"
+  _line=${_line//$'\n'/ }; _line=${_line//$'\r'/ }; _line=${_line//$'\t'/ }
+  printf '%s\n' "$_line" >&2
+}
+
 # ▶ dispatch line. cli=<adapter>; a missing field renders "?".
 ens_provenance() { # OP ENDPOINT ROSTER [reason]
   _ens_provenance_on || return 0
   local op="$1" ep="$2" roster="$3" reason="${4:-}" cli model family
   { read -r cli; read -r model; read -r family; } < <(ens_endpoint_fields "$ep" "$roster" adapter model family)
-  printf '▶ %s %s · cli=%s · model=%s · family=%s%s\n' \
-    "$op" "$ep" "${cli:-?}" "${model:-?}" "${family:-?}" "${reason:+ · $reason}" >&2
+  _ens_prov_emit '▶ %s %s · cli=%s · model=%s · family=%s%s' \
+    "$op" "$ep" "${cli:-?}" "${model:-?}" "${family:-?}" "${reason:+ · $reason}"
 }
 
 # ◀ result line. Field-free; optional trailing detail slot.
 ens_provenance_result() { # OP ENDPOINT OUTCOME [detail]
   _ens_provenance_on || return 0
   local op="$1" ep="$2" outcome="$3" detail="${4:-}"
-  printf '◀ %s %s%s → %s\n' "$op" "$ep" "${detail:+ · $detail}" "$outcome" >&2
+  _ens_prov_emit '◀ %s %s%s → %s' "$op" "$ep" "${detail:+ · $detail}" "$outcome"
 }

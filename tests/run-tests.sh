@@ -69,6 +69,13 @@ out="$(ENSEMBLE_PROVENANCE=OFF ens_provenance review gpt-5.5@codex "$PR" 2>&1 1>
 [ -z "$out" ] && { echo "ok: ▶ silenced by toggle"; PASS=$((PASS+1)); } || { echo "FAIL: ▶ not silenced"; FAIL=$((FAIL+1)); }
 out="$(ENSEMBLE_PROVENANCE=0 ens_provenance_result review gpt-5.5@codex APPROVED 2>&1 1>/dev/null)"
 [ -z "$out" ] && { echo "ok: ◀ silenced by toggle"; PASS=$((PASS+1)); } || { echo "FAIL: ◀ not silenced"; FAIL=$((FAIL+1)); }
+# log-injection hardening: an embedded newline in a value must NOT fabricate a 2nd line
+out="$(ens_provenance_result review "ep@x" "$(printf 'CHANGES\nINJECTED')" 2>&1 1>/dev/null)"
+nlines="$(printf '%s' "$out" | grep -c .)"
+check "provenance ◀ strips embedded newline (no log injection)" 1 "$nlines" "INJECTED" "$out"
+out="$(ens_provenance delegate "ep@x" "$PR" "$(printf 'routed\nFAKE ▶ line')" 2>&1 1>/dev/null)"
+nlines="$(printf '%s' "$out" | grep -c .)"
+check "provenance ▶ strips embedded newline in reason" 1 "$nlines" "FAKE" "$out"
 
 echo "== verdict normalizer =="
 source "$ROOT/scripts/lib/verdict.sh"
