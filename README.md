@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/hero.png" alt="Ensemble — a conductor figure in orange directing four jewel-toned model-figures reaching toward a shared point of light" width="820">
+<img src="docs/assets/hero.jpg" alt="Ensemble — a conductor figure in orange directing four jewel-toned model-figures reaching toward a shared point of light" width="820">
 
 # Ensemble
 
