@@ -155,11 +155,13 @@ if [ "$sub" = "merge" ]; then
   # still staged. Applied to BOTH the "is there anything to commit?" check and `git add -A`
   # so an executor that produced ONLY artifacts results in no commit (not a junk commit).
   DG_IGNORE="$(mktemp)"; ens_write_ephemeral_ignore "$DG_IGNORE"
-  # Re-derive the staged set ourselves: unstage anything the executor may have staged (incl.
+  # Re-derive the staged set ourselves: unstage anything the executor may have STAGED (incl.
   # an artifact it `git add`ed, which excludesFile can't drop once indexed), then re-stage
   # from the working tree below WITH the exclude. Mixed reset touches only the index, never
-  # the worktree, so no real work is lost. Makes the "no ephemeral artifacts" invariant hold
-  # regardless of the executor's git behavior (codex r1).
+  # the worktree, so no real work is lost. (Scope: this excludes artifacts the executor left
+  # untracked OR staged. The executor is instructed not to run git at all — ens_digest_prompt
+  # — so it does not create its own commits; and Claude's mandatory clean-state verification
+  # before merge is the backstop for anything unexpected on the branch.)
   git -C "$WT" reset -q >/dev/null 2>&1 || true
   if [ -n "$(git -C "$WT" -c core.excludesFile="$DG_IGNORE" status --porcelain 2>/dev/null)" ]; then
     git -C "$WT" -c core.excludesFile="$DG_IGNORE" add -A || { rm -f "$DG_IGNORE"; die "git add in worktree failed"; }

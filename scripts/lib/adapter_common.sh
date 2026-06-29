@@ -49,7 +49,7 @@ FTR
 ens_digest_prompt() { # PROMPT_FILE
   local pf="$1"
   cat <<'HDR'
-You are an autonomous coding executor working INSIDE an isolated git worktree (your current working directory). Implement the task below by CREATING/EDITING files in this directory yourself — do not merely describe the changes. Keep changes scoped to the task. If a repo-root AGENTS.md exists, follow it.
+You are an autonomous coding executor working INSIDE an isolated git worktree (your current working directory). Implement the task below by CREATING/EDITING files in this directory yourself — do not merely describe the changes. Keep changes scoped to the task. If a repo-root AGENTS.md exists, follow it. Do NOT run git yourself (no add/commit/branch/checkout) — only create and edit files; version control (staging, committing, merging) is handled for you afterward.
 
 --- TASK ---
 HDR
