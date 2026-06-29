@@ -7,6 +7,10 @@ scratch/
 *.bak
 roster.json.bak
 
+# python bytecode (e.g. when a fixture is run/imported during review)
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
 **/.DS_Store

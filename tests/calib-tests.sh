@@ -114,13 +114,20 @@ giveaway = re.compile(r'O\(n|quadratic|\bSSRF\b|TOCTOU|deadlock|bank.?er|half-to
                       r'allow-?list|block-?list|opposite order|throwaway|arbitrary (object|code)',
                       re.I)
 bad = []
-for dp, _, fs in os.walk(os.path.join(root, "fixtures")):
-    for f in fs:
-        if not f.startswith("input."): continue
-        for i, line in enumerate(open(os.path.join(dp, f), encoding="utf-8"), 1):
-            c = line.split("#", 1)[1] if "#" in line else ""        # inline / standalone comment
-            if c and giveaway.search(c):
-                bad.append("%s:%d %s" % (os.path.relpath(os.path.join(dp, f), root), i, c.strip()))
+fixroot = os.path.join(root, "fixtures")
+for cat in sorted(os.listdir(fixroot)):
+    cp = os.path.join(fixroot, cat)
+    if not os.path.isdir(cp): continue
+    for name in sorted(os.listdir(cp)):
+        fp = os.path.join(cp, name)
+        if not os.path.isdir(fp): continue
+        # only the fixture's own top-level input.* source (never __pycache__/.pyc etc.)
+        for f in os.listdir(fp):
+            if not (f.startswith("input.") and f.endswith(".py")): continue
+            for i, line in enumerate(open(os.path.join(fp, f), encoding="utf-8"), 1):
+                c = line.split("#", 1)[1] if "#" in line else ""    # inline / standalone comment
+                if c and giveaway.search(c):
+                    bad.append("%s/%s/%s:%d %s" % (cat, name, f, i, c.strip()))
 if bad: [print("  - giveaway comment:", b) for b in bad]; sys.exit(1)
 PY
 check "fixture inputs do not describe their own bug in a comment" 0 "$rc"
