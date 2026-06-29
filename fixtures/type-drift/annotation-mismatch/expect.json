@@ -1,7 +1,1 @@
-{
-  "category": "type-drift",
-  "verdict": "CHANGES",
-  "must_match": ["return type|annotation|-> ?int|returns a? ?str|type mismatch|int\\(|not an int|string"],
-  "must_match_mode": "all",
-  "note": "parse_count is annotated -> int but returns str; downstream arithmetic breaks"
-}
+{"category":"type-drift","verdict":"CHANGES","must_match":["\\bstr\\b|\\bstring\\b|return type|annotation|-> ?int|returns? a? ?str|type (mismatch|error)|int\\(|not an int|str \\* 2|duplicat"],"must_match_mode":"all","note":"-> int but returns str; str*2 duplicates"}

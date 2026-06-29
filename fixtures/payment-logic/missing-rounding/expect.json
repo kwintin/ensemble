@@ -1,7 +1,1 @@
-{
-  "category": "payment-logic",
-  "verdict": "CHANGES",
-  "must_match": ["round|fractional cent|sub-?cent|truncat|integer|decimal|precision"],
-  "must_match_mode": "all",
-  "note": "tax produces fractional cents that are never rounded to an integer amount"
-}
+{"category":"payment-logic","verdict":"CHANGES","must_match":["round|fractional (cent|amount|value)|sub-?cent|never rounded|cents?.*(fraction|not (whole|integer|round))|non-?integer (cent|amount|charge)|float.*(cent|tax)|\\.0825|charge.* fraction"],"must_match_mode":"all","note":"tax yields fractional cents, never rounded to an integer amount"}

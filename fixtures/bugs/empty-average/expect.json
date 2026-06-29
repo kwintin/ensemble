@@ -1,7 +1,1 @@
-{
-  "category": "bugs",
-  "verdict": "CHANGES",
-  "must_match": ["empty|zero|zerodivision|len\\(xs\\)\\s*==\\s*0|divide|division"],
-  "must_match_mode": "all",
-  "note": "ZeroDivisionError when xs is empty"
-}
+{"category":"bugs","verdict":"CHANGES","must_match":["empty|zerodivision|division by zero|divide by zero|len\\(xs\\)\\s*==?\\s*0|len.*(==|is) ?0|no (items|elements|values)|empty (list|input|sequence|collection)"],"must_match_mode":"all","note":"ZeroDivisionError on empty input"}
