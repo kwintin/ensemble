@@ -1,5 +1,5 @@
 {
-  "name": "ensemble-dev",
+  "name": "ensemble-for-claude-code",
   "description": "Development marketplace for the ensemble plugin — multi-model review + strength-routed delegation across heterogeneous AI CLIs.",
   "owner": {
     "name": "Quentin Millpass",

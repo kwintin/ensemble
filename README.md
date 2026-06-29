@@ -65,7 +65,7 @@ installed rather than hardcoding a fixed set.
 ```bash
 # add this repo as a plugin marketplace, then install the plugin
 /plugin marketplace add kwintin/ensemble      # or a local path to this checkout
-/plugin install ensemble@ensemble-dev
+/plugin install ensemble@ensemble-for-claude-code
 ```
 
 Then configure your roster from the CLIs you actually have:
