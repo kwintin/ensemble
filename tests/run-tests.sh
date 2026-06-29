@@ -477,6 +477,33 @@ check "delegate merge committed the real source file" 0 0 "ens_delegate_stub.txt
 check "delegate merge did NOT commit ephemeral bytecode" 0 "$(git -C "$dga" ls-files | grep -q '__pycache__\|\.pyc' && echo 1 || echo 0)"
 rm -rf "$dga"; rm -f "$pfa"
 
+# helper: fresh repo -> delegate run (given STUB_MODE) -> merge; echoes the repo dir
+dg_run_merge() { # STUB_MODE -> echoes repo dir
+  local mode="$1" repo wt out; repo="$(mktemp -d)"
+  ( cd "$repo" && git init -q && printf 'base\n' > base.txt && git add base.txt && git -c user.email=t@t -c user.name=t commit -q -m init )
+  cp "$RM" "$repo/roster.json"; local p; p="$(mktemp)"; echo task > "$p"
+  out="$(cd "$repo" && STUB_MODE="$mode" ENSEMBLE_ROSTER="$repo/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint x@codex --prompt-file "$p" 2>/dev/null)"
+  wt="$(printf '%s' "$out" | python3 -c 'import json,sys;print(json.load(sys.stdin)["worktree"])')"
+  ( cd "$repo" && STUB_MODE="$mode" ENSEMBLE_ROSTER="$repo/roster.json" bash "$ROOT/scripts/ens-delegate.sh" merge --worktree "$wt" >/dev/null 2>&1 )
+  rm -f "$p"; echo "$repo"
+}
+# (1) executor STAGES the artifact itself -> merge must still not commit it (codex r1: reset re-derives)
+r1="$(dg_run_merge run_staged_artifact)"
+check "merge excludes an artifact the EXECUTOR staged" 0 "$(git -C "$r1" ls-files | grep -q '__pycache__\|\.pyc' && echo 1 || echo 0)"
+check "merge still committed the real file (executor-staged case)" 0 0 "ens_delegate_stub.txt" "$(git -C "$r1" ls-files)"; rm -rf "$r1"
+# (2) executor edits a TRACKED file (+ bytecode) -> edit preserved, bytecode excluded
+r2="$(dg_run_merge run_tracked_edit)"
+check "merge preserves a tracked-file edit" 0 0 "edited" "$(git -C "$r2" show HEAD:base.txt 2>/dev/null)"
+check "merge excludes bytecode in the tracked-edit case" 0 "$(git -C "$r2" ls-files | grep -q '__pycache__\|\.pyc' && echo 1 || echo 0)"; rm -rf "$r2"
+# (3) executor produces ONLY artifacts -> no commit at all (main HEAD unchanged)
+r3="$(mktemp -d)"; ( cd "$r3" && git init -q && printf 'base\n'>base.txt && git add base.txt && git -c user.email=t@t -c user.name=t commit -q -m init )
+cp "$RM" "$r3/roster.json"; p3="$(mktemp)"; echo task>"$p3"; h0="$(git -C "$r3" rev-parse HEAD)"
+o3="$(cd "$r3" && STUB_MODE=run_only_artifact ENSEMBLE_ROSTER="$r3/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint x@codex --prompt-file "$p3" 2>/dev/null)"
+w3="$(printf '%s' "$o3" | python3 -c 'import json,sys;print(json.load(sys.stdin)["worktree"])')"
+( cd "$r3" && STUB_MODE=run_only_artifact ENSEMBLE_ROSTER="$r3/roster.json" bash "$ROOT/scripts/ens-delegate.sh" merge --worktree "$w3" >/dev/null 2>&1 )
+check "only-artifacts produces NO new commit on main" 0 0 "$h0" "$(git -C "$r3" rev-parse HEAD)"
+rm -rf "$r3"; rm -f "$p3"
+
 # PROVENANCE GUARD: merge/discard must refuse a worktree that is not an ensemble/delegate-* branch
 pg="$(mktemp -d)"; ( cd "$pg" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init && git worktree add -q -b my-feature "$pg/feat" HEAD )
 rc=0; ( cd "$pg" && bash "$ROOT/scripts/ens-delegate.sh" discard --worktree "$pg/feat" >/dev/null 2>&1 ) || rc=$?
