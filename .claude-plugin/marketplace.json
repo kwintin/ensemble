@@ -9,7 +9,7 @@
     {
       "name": "ensemble",
       "description": "Multi-model review + strength-routed delegation across heterogeneous AI CLIs (codex, agy, grok, opencode, kilo, vibe). Consensus review, council mode, delegated implementation, and calibration — Claude conducts, the models reach.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "source": "./",
       "author": {
         "name": "Quentin Millpass",
