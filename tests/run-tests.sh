@@ -464,6 +464,19 @@ WT2="$(printf '%s' "$out2" | python3 -c 'import json,sys;print(json.load(sys.std
 check "delegate discard removed the worktree" 0 0 "1" "$([ ! -d "$WT2" ] && echo 1 || echo 0)"
 check "delegate discard left no uncommitted tracked changes" 0 "$(cd "$dg" && git status --porcelain | grep -v '^??' | grep -q . && echo 1 || echo 0)"
 rm -rf "$dg"; rm -f "$pf"
+
+# merge must NOT commit ephemeral artifacts (bytecode/caches) the executor produced by
+# running the code — only real source changes (the same denylist as the read-only guard).
+dga="$(mktemp -d)"; ( cd "$dga" && git init -q && printf 'base\n' > base.txt && git add base.txt && git -c user.email=t@t -c user.name=t commit -q -m init )
+cp "$RM" "$dga/roster.json"; pfa="$(mktemp)"; echo "implement + run" > "$pfa"
+outa="$(cd "$dga" && STUB_MODE=run_artifact ENSEMBLE_ROSTER="$dga/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint x@codex --prompt-file "$pfa" 2>/dev/null)"
+WTa="$(printf '%s' "$outa" | python3 -c 'import json,sys;print(json.load(sys.stdin)["worktree"])')"
+( cd "$dga" && STUB_MODE=run_artifact ENSEMBLE_ROSTER="$dga/roster.json" bash "$ROOT/scripts/ens-delegate.sh" merge --worktree "$WTa" >/dev/null 2>&1 ); mrc=$?
+check "delegate merge of real+artifact change succeeds" 0 "$mrc"
+check "delegate merge committed the real source file" 0 0 "ens_delegate_stub.txt" "$(git -C "$dga" ls-files)"
+check "delegate merge did NOT commit ephemeral bytecode" 0 "$(git -C "$dga" ls-files | grep -q '__pycache__\|\.pyc' && echo 1 || echo 0)"
+rm -rf "$dga"; rm -f "$pfa"
+
 # PROVENANCE GUARD: merge/discard must refuse a worktree that is not an ensemble/delegate-* branch
 pg="$(mktemp -d)"; ( cd "$pg" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init && git worktree add -q -b my-feature "$pg/feat" HEAD )
 rc=0; ( cd "$pg" && bash "$ROOT/scripts/ens-delegate.sh" discard --worktree "$pg/feat" >/dev/null 2>&1 ) || rc=$?

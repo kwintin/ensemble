@@ -20,6 +20,8 @@ case "$sub" in
         notfound) exit 127 ;;
         empty)    exit 0 ;;
         run_noop) printf 'Nothing to do.\n===DIGEST===\nfiles: \ndecisions: none\ncontext: no-op\n===END===\n'; exit 0 ;;
+        run_artifact) [ -n "$cdir" ] && { printf 'real change\n' > "$cdir/ens_delegate_stub.txt"; mkdir -p "$cdir/__pycache__"; : > "$cdir/__pycache__/x.cpython-314.pyc"; }
+           printf 'Implemented + ran tests.\n===DIGEST===\nfiles: ens_delegate_stub.txt\ndecisions: - wrote file, ran code\ncontext: produced bytecode too\n===END===\n'; exit 0 ;;
         *) [ -n "$cdir" ] && printf 'stub executor was here\n' > "$cdir/ens_delegate_stub.txt"
            printf 'Implemented the task.\n===DIGEST===\nfiles: ens_delegate_stub.txt\ndecisions: - wrote the stub file\ncontext: stub executor run\n===END===\n'
            exit 0 ;;

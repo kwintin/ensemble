@@ -3,6 +3,7 @@ set -uo pipefail
 ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPTS="$ROOT/scripts"
 source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped)
+source "$SCRIPTS/lib/ephemeral-ignore.sh"   # ens_write_ephemeral_ignore (shared denylist)
 die() { echo "ens-delegate: $*" >&2; exit 1; }
 
 # ----------------------------------------------------------------------------
@@ -104,25 +105,32 @@ if [ "$sub" = "run" ]; then
   [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"
   _emitted=1   # executor finished -> the EXIT trap now LEAVES the worktree for verify
 
+  # ephemeral-artifact denylist (bytecode/caches the executor made by running the code):
+  # excluded from the status/diff report AND the intent-to-add below, so they never enter
+  # the index — otherwise the later merge's excludesFile could not keep them out of the commit.
+  DG_IGNORE="$WORK/.dg-ignore"; ens_write_ephemeral_ignore "$DG_IGNORE"
+
   # emit a structured result; the worktree is LEFT in place for clean-state verify
-  ENS_RC="$rc" python3 - "$WT" "$BR" "$DIGEST" "$WORK/err" "$ENDPOINT" <<'PY'
+  ENS_RC="$rc" python3 - "$WT" "$BR" "$DIGEST" "$WORK/err" "$ENDPOINT" "$DG_IGNORE" <<'PY'
 import json,os,sys,subprocess
-wt,br,digestf,errf,ep=sys.argv[1:6]; rc=int(os.environ.get("ENS_RC","1"))
+wt,br,digestf,errf,ep,ignore=sys.argv[1:7]; rc=int(os.environ.get("ENS_RC","1"))
+EX=["-c","core.excludesFile="+ignore]   # keep ephemeral artifacts out of status/diff/index
 def sh(*a):
     try: return subprocess.run(a,capture_output=True,text=True,timeout=30).stdout
     except Exception: return ""
-files=[l[3:] for l in sh("git","-C",wt,"status","--porcelain").splitlines() if l]
+files=[l[3:] for l in sh("git","-C",wt,*EX,"status","--porcelain").splitlines() if l]
 def read(p):
     try: return open(p,encoding="utf-8",errors="replace").read()
     except Exception: return ""
 # intent-to-add so NEW files also appear in `diff --stat` (no content is staged, so
-# the later merge's `git add -A` is unaffected)
-sh("git","-C",wt,"add","-A","-N")
+# the later merge's `git add -A` is unaffected). Ephemeral artifacts are excluded via EX,
+# so they never become intent-to-add and the merge can keep them out of the commit.
+sh("git","-C",wt,*EX,"add","-A","-N")
 REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing"}
 print(json.dumps({"endpoint":ep,"status":"ok" if rc==0 else "failed",
     "signal":(REASON.get(rc,"failed") if rc else None),
     "worktree":wt,"branch":br,"files_changed":files,
-    "diff_stat":sh("git","-C",wt,"diff","--stat").strip(),
+    "diff_stat":sh("git","-C",wt,*EX,"diff","--stat").strip(),
     "digest":read(digestf),"stderr":(read(errf)[:2000] if rc else "")}, indent=2))
 PY
   exit "$rc"
@@ -141,11 +149,18 @@ if [ "$sub" = "merge" ]; then
   [ -n "$WT" ] || die "merge needs --worktree <path>"
   BR="$(_delegate_branch "$WT")" || exit 1   # provenance guard (delegate worktree only)
   [ -n "$MSG" ] || MSG="ensemble delegate: $BR"
-  if [ -n "$(git -C "$WT" status --porcelain 2>/dev/null)" ]; then
-    git -C "$WT" add -A || die "git add in worktree failed"
+  # An executor that runs the code/tests produces ephemeral artifacts (bytecode, caches);
+  # keep them out of the commit so a delegated change never carries junk. core.excludesFile
+  # only affects UNTRACKED files, so the executor's real source edits + new source files are
+  # still staged. Applied to BOTH the "is there anything to commit?" check and `git add -A`
+  # so an executor that produced ONLY artifacts results in no commit (not a junk commit).
+  DG_IGNORE="$(mktemp)"; ens_write_ephemeral_ignore "$DG_IGNORE"
+  if [ -n "$(git -C "$WT" -c core.excludesFile="$DG_IGNORE" status --porcelain 2>/dev/null)" ]; then
+    git -C "$WT" -c core.excludesFile="$DG_IGNORE" add -A || { rm -f "$DG_IGNORE"; die "git add in worktree failed"; }
     git -C "$WT" -c core.hooksPath=/dev/null -c user.email=ensemble@local -c user.name=ensemble \
-      commit --quiet -m "$MSG" || die "commit in worktree failed"
+      commit --quiet -m "$MSG" || { rm -f "$DG_IGNORE"; die "commit in worktree failed"; }
   fi
+  rm -f "$DG_IGNORE"
   if ! git -C "$MAIN_REPO" merge --no-ff -m "$MSG" "$BR"; then
     git -C "$MAIN_REPO" merge --abort 2>/dev/null || true   # leave the main repo clean
     die "merge of '$BR' conflicts with the current branch; aborted (worktree kept at '$WT' — resolve manually or discard)"

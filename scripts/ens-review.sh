@@ -4,6 +4,7 @@ ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPTS="$ROOT/scripts"
 source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped)
 source "$SCRIPTS/lib/roster.sh"
+source "$SCRIPTS/lib/ephemeral-ignore.sh"   # ens_write_ephemeral_ignore (shared denylist)
 
 die() { echo "ens-review: $*" >&2; exit 1; }
 
@@ -130,9 +131,7 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     # these untracked artifacts from --porcelain; a tracked-file edit or a NEW non-ephemeral
     # file still trips the guard (the real tamper signal). Does not touch the user's repo.
     RO_IGNORE="$WORK/.ro-ignore"
-    printf '%s\n' '__pycache__/' '*.py[cod]' '.serena/' '.pytest_cache/' '.mypy_cache/' \
-      '.ruff_cache/' '.tox/' '.ipynb_checkpoints/' '.DS_Store' 'node_modules/' \
-      '.venv/' 'venv/' '.coverage' '.cache/' '*.egg-info/' > "$RO_IGNORE"
+    ens_write_ephemeral_ignore "$RO_IGNORE"
     # capture the post-setup baseline; a reviewer write is any DELTA from it. This is
     # robust even if the snapshot commit failed (baseline would just be non-empty),
     # so a clean reviewer run never false-positives to exit 5.
