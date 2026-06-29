@@ -1,0 +1,1 @@
+{"category":"type-drift","verdict":"CHANGES","must_match":["bool.*(int|subclass|is an? int)|isinstance.*bool|True (is|passes|counts|==)|subclass of int|accepts? .*bool|reject bool|type\\(qty\\) is int|\\bbool\\b"],"must_match_mode":"all","note":"bool is a subclass of int; isinstance(True,int) is True -> guard accepts booleans"}

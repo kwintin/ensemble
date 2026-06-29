@@ -1,0 +1,1 @@
+{"category":"concurrency","verdict":"CHANGES","must_match":["race|check-?then-?act|double (build|comput|work)|both threads|two threads.*(build|compute)|lock (released|dropped|too early)|outside the lock|not (held|atomic)|gap between|window"],"must_match_mode":"all","note":"the check and the build are not under one lock -> two threads double-build (race)"}

@@ -1,0 +1,1 @@
+{"category":"injection","verdict":"CHANGES","must_match":["ssrf|server-?side request|internal (service|host|network|endpoint|metadata)|169\\.254|link-?local|localhost|127\\.0\\.0\\.1|private (ip|address|range)|allow-?list|metadata service"],"must_match_mode":"all","note":"user-controlled URL fetched with no allowlist -> SSRF"}

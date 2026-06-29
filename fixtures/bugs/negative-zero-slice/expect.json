@@ -1,0 +1,1 @@
+{"category":"bugs","verdict":"CHANGES","must_match":["-0|n\\s*==\\s*0|when n is 0|zero.*(whole|entire|all|full)|returns? (the )?(whole|entire|full|all|everything)|items\\[0:\\]|empty.*(instead|expected)"],"must_match_mode":"all","note":"items[-0:] is items[0:] = whole list; n==0 should return []"}

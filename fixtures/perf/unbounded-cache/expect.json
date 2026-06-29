@@ -1,0 +1,1 @@
+{"category":"perf","verdict":"CHANGES","must_match":["unbounded|memory leak|never (evict|cleared|expire|bound)|grows? (without|un)bound|grow indefinitely|lru_cache|maxsize|eviction|cache size|bound the cache|leak"],"must_match_mode":"all","note":"cache key includes per-call data -> unbounded growth / memory leak; needs eviction or bounded cache"}

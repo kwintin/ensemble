@@ -1,0 +1,1 @@
+{"category":"type-drift","verdict":"CHANGES","must_match":["none|nonetype|optional|unchecked|propagat|absent|missing user|db\\.get.*none|user is none|subscript.*none|not (handled|checked).*none|guard"],"must_match_mode":"all","note":"None from db.get flows through display_name into format_name unchecked"}

@@ -1,0 +1,1 @@
+{"category":"perf","verdict":"CHANGES","must_match":["o\\(n\\^?2\\)|quadratic|list\\.remove|remove.* o\\(n\\)|removal is o\\(n\\)|list comprehension|filter|rebuild|\\[u for u in|each remove (is|scans)"],"must_match_mode":"all","note":"list.remove in a loop is O(n^2); rebuild with a comprehension"}

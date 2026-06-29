@@ -1,0 +1,1 @@
+{"category":"concurrency","verdict":"CHANGES","must_match":["deadlock|lock order|acquire.*(opposite|reverse|different|inconsistent) order|circular wait|order(ing|ed) (of |the )?locks?|consistent (lock )?order|a then b|b then a|hold.*wait"],"must_match_mode":"all","note":"transfer locks A->B, refund locks B->A: opposite order -> deadlock"}

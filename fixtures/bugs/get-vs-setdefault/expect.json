@@ -1,0 +1,1 @@
+{"category":"bugs","verdict":"CHANGES","must_match":["setdefault|get returns|new (empty )?list|discarded|thrown away|temporary list|not stored|never (assigned|added)|out\\[key\\]|always (empty|\\{\\})|defaultdict"],"must_match_mode":"all","note":".get(k,[]) returns a throwaway list; the append is lost; use setdefault"}
