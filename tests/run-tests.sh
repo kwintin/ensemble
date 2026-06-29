@@ -43,6 +43,33 @@ check "codex model"   0 0 "gpt-5.5" "$(ens_endpoint_field "$R" gpt-5.5@codex mod
 check "codex family"  0 0 "openai"  "$(ens_family_of "$R" gpt-5.5@codex)"
 check "enabled lists codex" 0 0 "gpt-5.5@codex" "$(ens_endpoints_enabled "$R")"
 
+echo "== provenance helper =="
+source "$ROOT/scripts/lib/provenance.sh"
+PR="$ROOT/roster.json"
+# batch read resolves three fields in one call, in order
+out="$(ens_endpoint_fields gpt-5.5@codex "$PR" adapter model family | tr '\n' '|')"
+check "ens_endpoint_fields batch order" 0 0 "codex|gpt-5.5|openai|" "$out"
+# ▶ format goes to stderr
+out="$(ens_provenance review gpt-5.5@codex "$PR" 2>&1 1>/dev/null)"
+check "provenance ▶ line" 0 0 "▶ review gpt-5.5@codex · cli=codex · model=gpt-5.5 · family=openai" "$out"
+# ▶ optional reason slot
+out="$(ens_provenance delegate gpt-5.5@codex "$PR" "routed: payment-logic" 2>&1 1>/dev/null)"
+check "provenance ▶ reason" 0 0 "family=openai · routed: payment-logic" "$out"
+# ◀ field-free + optional detail
+out="$(ens_provenance_result calibrate gpt-5.5@codex hit "fixture=bugs/x" 2>&1 1>/dev/null)"
+check "provenance ◀ detail" 0 0 "◀ calibrate gpt-5.5@codex · fixture=bugs/x → hit" "$out"
+out="$(ens_provenance_result review gpt-5.5@codex "CHANGES (2 findings)" 2>&1 1>/dev/null)"
+check "provenance ◀ no-detail" 0 0 "◀ review gpt-5.5@codex → CHANGES (2 findings)" "$out"
+# missing fields render ?
+badr="$(mktemp)"; printf '%s' '{"endpoints":[{"id":"x@y","adapter":"y"}]}' > "$badr"
+out="$(ens_provenance review x@y "$badr" 2>&1 1>/dev/null)"
+check "provenance missing fields -> ?" 0 0 "cli=y · model=? · family=?" "$out"; rm -f "$badr"
+# toggle silences both (case-insensitive), emits nothing
+out="$(ENSEMBLE_PROVENANCE=OFF ens_provenance review gpt-5.5@codex "$PR" 2>&1 1>/dev/null)"
+[ -z "$out" ] && { echo "ok: ▶ silenced by toggle"; PASS=$((PASS+1)); } || { echo "FAIL: ▶ not silenced"; FAIL=$((FAIL+1)); }
+out="$(ENSEMBLE_PROVENANCE=0 ens_provenance_result review gpt-5.5@codex APPROVED 2>&1 1>/dev/null)"
+[ -z "$out" ] && { echo "ok: ◀ silenced by toggle"; PASS=$((PASS+1)); } || { echo "FAIL: ◀ not silenced"; FAIL=$((FAIL+1)); }
+
 echo "== verdict normalizer =="
 source "$ROOT/scripts/lib/verdict.sh"
 rf="$(mktemp)"
