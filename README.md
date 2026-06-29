@@ -1,5 +1,3 @@
-<div align="center">
-
 <img src="docs/assets/hero.jpg" alt="Ensemble — a conductor figure in orange directing four jewel-toned model-figures reaching toward a shared point of light" width="820">
 
 # Ensemble
@@ -10,14 +8,6 @@ A Claude Code plugin that turns a roster of independent AI model CLIs into an
 **ensemble** — dispatched in parallel for consensus review, or routed by strength
 for delegated work. Claude always conducts: it owns requirements, judgement,
 synthesis, and verification.
-
-</div>
-
----
-
-> **Status:** v1 feature-complete — review, council, delegate, setup, calibrate, and
-> doctor are all implemented and multi-model-reviewed. Private / pre-release; not yet
-> battle-tested in real conditions. See [`docs/specs/`](docs/specs/) for the full design.
 
 ## What it does
 
@@ -67,6 +57,9 @@ correctness — the standing figure to their reaching hands.
   without it the engines fall back to a portable perl/python guard (macOS:
   `brew install coreutils`).
 
+Configuration is roster-driven, so the plugin adapts to whatever CLIs you have
+installed rather than hardcoding a fixed set.
+
 ## Install
 
 ```bash
@@ -109,15 +102,3 @@ platform considerations the code already handles:
 - **`date`** — uses `date -u +%Y-%m-%d` (portable across BSD and GNU).
 - No reliance on GNU-only flags in the hot paths; JSON handling is done in Python, not
   `sed`/`awk`, to avoid shell-portability traps.
-
-## Roadmap
-
-| Phase | Scope | Status |
-|------|-------|--------|
-| 0 | Shared core — dispatcher, per-CLI adapters, roster, doctor, hermetic test harness | ✅ |
-| 1 | Review engine — hardened consensus loop + council mode, setup wizard, gating hooks | ✅ |
-| 2 | Delegate engine — strength routing, worktree isolation, clean-state verification | ✅ |
-| 3 | Calibration + packaging — fixture-grounded strengths, marketplace manifest, cross-platform notes | ✅ |
-
-Configuration is roster-driven, so the plugin adapts to whatever CLIs you have
-installed rather than hardcoding a fixed set.
