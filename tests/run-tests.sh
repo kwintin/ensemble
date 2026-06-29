@@ -578,6 +578,10 @@ DGP="$(mktemp)"; echo "do a thing" > "$DGP"
 DOUT="$(STUB_MODE=ok bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" --reason "routed: bugs" 2>&1 1>/dev/null)"
 check "delegate ▶ with reason" 0 0 "▶ delegate gpt-5.5@codex · cli=codex · model=gpt-5.5 · family=openai · routed: bugs" "$DOUT"
 check "delegate ◀ status" 0 0 "◀ delegate gpt-5.5@codex → ok" "$DOUT"
+# ◀ status must reflect the EXECUTOR exit, not the JSON-writer's: a FAILING executor
+# (whose result JSON still builds fine, py_rc=0) must report → failed, not → ok.
+DFOUT="$(STUB_MODE=quota bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" 2>&1 1>/dev/null)"
+check "delegate ◀ status reflects executor failure" 0 0 "◀ delegate gpt-5.5@codex → failed" "$DFOUT"
 DJSON="$(STUB_MODE=ok bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" 2>/dev/null)"
 check "delegate run JSON carries family" 0 0 '"family": "openai"' "$DJSON"
 check "delegate run JSON carries cli" 0 0 '"cli": "codex"' "$DJSON"

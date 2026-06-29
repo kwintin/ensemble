@@ -144,7 +144,7 @@ res["family"]=os.environ.get("ENS_FAMILY") or None
 print(json.dumps(res, indent=2))
 PY
   py_rc=$?
-  _st=ok; [ "$py_rc" -ne 0 ] && _st=failed
+  _st=ok; [ "$rc" -ne 0 ] && _st=failed   # status reflects the EXECUTOR outcome ($rc), not the JSON-writer ($py_rc)
   ens_provenance_result delegate "$ENDPOINT" "$_st"
   exit "$rc"
 fi
