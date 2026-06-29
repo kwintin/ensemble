@@ -3,6 +3,10 @@ scratch/
 *.log
 .superpowers/
 
+# calibrate / apply runtime backups (created next to the roster on apply)
+*.bak
+roster.json.bak
+
 # macOS
 .DS_Store
 **/.DS_Store
