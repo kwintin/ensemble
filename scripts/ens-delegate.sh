@@ -3,6 +3,8 @@ set -uo pipefail
 ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPTS="$ROOT/scripts"
 source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped)
+source "$SCRIPTS/lib/roster.sh"
+source "$SCRIPTS/lib/provenance.sh"
 source "$SCRIPTS/lib/ephemeral-ignore.sh"   # ens_write_ephemeral_ignore (shared denylist)
 die() { echo "ens-delegate: $*" >&2; exit 1; }
 
@@ -60,12 +62,13 @@ _delegate_branch() { # WT  -> echoes the branch iff WT is a delegate worktree of
 
 # ============================ run ============================
 if [ "$sub" = "run" ]; then
-  ENDPOINT=""; PROMPT_FILE=""; STDIN_TMP=""; BASE="HEAD"
+  ENDPOINT=""; PROMPT_FILE=""; STDIN_TMP=""; BASE="HEAD"; REASON=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --endpoint) ENDPOINT="$2"; shift 2 ;;
       --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
       --base) BASE="$2"; shift 2 ;;
+      --reason) REASON="$2"; shift 2 ;;
       -) PROMPT_FILE="$(mktemp)"; cat > "$PROMPT_FILE"; STDIN_TMP="$PROMPT_FILE"; shift ;;
       *) die "unknown arg '$1'" ;;
     esac
@@ -100,6 +103,8 @@ if [ "$sub" = "run" ]; then
     || { cat "$WORK/wterr" >&2; die "could not create delegate worktree (base '$BASE')"; }
 
   DIGEST="$WORK/digest.txt"
+  { read -r DG_CLI; read -r DG_MODEL; read -r DG_FAMILY; } < <(ens_endpoint_fields "$ENDPOINT" "$ROSTER" adapter model family)
+  ens_provenance delegate "$ENDPOINT" "$ROSTER" "${REASON}"
   ENSEMBLE_ROSTER="$ROSTER" "$SCRIPTS/model-cli.sh" run \
     --endpoint "$ENDPOINT" --prompt-file "$PROMPT_FILE" --dir "$WT" >"$DIGEST" 2>"$WORK/err"; rc=$?
   [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"
@@ -111,6 +116,7 @@ if [ "$sub" = "run" ]; then
   DG_IGNORE="$WORK/.dg-ignore"; ens_write_ephemeral_ignore "$DG_IGNORE"
 
   # emit a structured result; the worktree is LEFT in place for clean-state verify
+  ENS_CLI="$DG_CLI" ENS_MODEL="$DG_MODEL" ENS_FAMILY="$DG_FAMILY" ENS_ENDPOINT="$ENDPOINT" \
   ENS_RC="$rc" python3 - "$WT" "$BR" "$DIGEST" "$WORK/err" "$ENDPOINT" "$DG_IGNORE" <<'PY'
 import json,os,sys,subprocess
 wt,br,digestf,errf,ep,ignore=sys.argv[1:7]; rc=int(os.environ.get("ENS_RC","1"))
@@ -127,12 +133,19 @@ def read(p):
 # so they never become intent-to-add and the merge can keep them out of the commit.
 sh("git","-C",wt,*EX,"add","-A","-N")
 REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing"}
-print(json.dumps({"endpoint":ep,"status":"ok" if rc==0 else "failed",
+res={"endpoint":os.environ.get("ENS_ENDPOINT") or ep,"status":"ok" if rc==0 else "failed",
     "signal":(REASON.get(rc,"failed") if rc else None),
     "worktree":wt,"branch":br,"files_changed":files,
     "diff_stat":sh("git","-C",wt,*EX,"diff","--stat").strip(),
-    "digest":read(digestf),"stderr":(read(errf)[:2000] if rc else "")}, indent=2))
+    "digest":read(digestf),"stderr":(read(errf)[:2000] if rc else "")}
+res["cli"]=os.environ.get("ENS_CLI") or None
+res["model"]=os.environ.get("ENS_MODEL") or None
+res["family"]=os.environ.get("ENS_FAMILY") or None
+print(json.dumps(res, indent=2))
 PY
+  py_rc=$?
+  _st=ok; [ "$py_rc" -ne 0 ] && _st=failed
+  ens_provenance_result delegate "$ENDPOINT" "$_st"
   exit "$rc"
 fi
 

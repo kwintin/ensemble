@@ -573,6 +573,16 @@ rc=0; ( cd "$pg" && bash "$ROOT/scripts/ens-delegate.sh" merge --worktree "$pg/f
 check "merge refuses a non-delegate worktree -> exit 1" 1 "$rc"
 ( cd "$pg" && git worktree remove --force "$pg/feat" 2>/dev/null ); rm -rf "$pg"
 
+echo "== ens-delegate provenance =="
+DGP="$(mktemp)"; echo "do a thing" > "$DGP"
+DOUT="$(STUB_MODE=ok bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" --reason "routed: bugs" 2>&1 1>/dev/null)"
+check "delegate ▶ with reason" 0 0 "▶ delegate gpt-5.5@codex · cli=codex · model=gpt-5.5 · family=openai · routed: bugs" "$DOUT"
+check "delegate ◀ status" 0 0 "◀ delegate gpt-5.5@codex → ok" "$DOUT"
+DJSON="$(STUB_MODE=ok bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" 2>/dev/null)"
+check "delegate run JSON carries family" 0 0 '"family": "openai"' "$DJSON"
+check "delegate run JSON carries cli" 0 0 '"cli": "codex"' "$DJSON"
+rm -f "$DGP"
+
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
 import os,sys
