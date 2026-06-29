@@ -101,6 +101,30 @@ if errs: [print("  -", e) for e in errs]; sys.exit(1)
 PY
 check "fixture must_match: genuine matches, decoy rejected" 0 "$rc"
 
+# no-giveaway guard: a fixture's input must NOT describe its own planted bug in a comment,
+# or the model just parrots the comment instead of finding the bug (the calibration would
+# measure comment-reading, not analysis). Flag unambiguous bug/fix vocabulary in comments.
+python3 - "$ROOT" <<'PY'; rc=$?
+import os, re, sys
+root = sys.argv[1]
+# unambiguous defect/fix terms that should never appear in a fixture's own code comment
+giveaway = re.compile(r'O\(n|quadratic|\bSSRF\b|TOCTOU|deadlock|bank.?er|half-to-even|'
+                      r'race condition|memory leak|unbounded|subclass of int|\bRCE\b|'
+                      r'UnsafeLoader|N\+1|n-plus-one|off-by-one|injection|setdefault|'
+                      r'allow-?list|block-?list|opposite order|throwaway|arbitrary (object|code)',
+                      re.I)
+bad = []
+for dp, _, fs in os.walk(os.path.join(root, "fixtures")):
+    for f in fs:
+        if not f.startswith("input."): continue
+        for i, line in enumerate(open(os.path.join(dp, f), encoding="utf-8"), 1):
+            c = line.split("#", 1)[1] if "#" in line else ""        # inline / standalone comment
+            if c and giveaway.search(c):
+                bad.append("%s:%d %s" % (os.path.relpath(os.path.join(dp, f), root), i, c.strip()))
+if bad: [print("  - giveaway comment:", b) for b in bad]; sys.exit(1)
+PY
+check "fixture inputs do not describe their own bug in a comment" 0 "$rc"
+
 # stub model-cli: emits a canned envelope per "#STUB <directive>" found in the prompt
 CALSTUB="$(mktemp)"
 cat > "$CALSTUB" <<'STUBEOF'

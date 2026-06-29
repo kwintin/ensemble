@@ -1,5 +1,5 @@
 def drop_inactive(users):
-    for u in users[:]:          # iterate a copy so removal is "safe"
+    for u in users[:]:
         if not u.active:
-            users.remove(u)     # list.remove is O(n) -> overall O(n^2)
+            users.remove(u)
     return users

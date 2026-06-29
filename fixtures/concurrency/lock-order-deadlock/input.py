@@ -9,6 +9,6 @@ def transfer(x, y):
             x.debit(); y.credit()
 
 def refund(x, y):
-    with lock_b:                  # acquires B then A -- opposite order from transfer
+    with lock_b:
         with lock_a:
             x.credit(); y.debit()

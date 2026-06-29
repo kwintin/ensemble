@@ -6,5 +6,5 @@ async def fetch(client, url):
 async def fetch_all(client, urls):
     results = []
     for url in urls:
-        results.append(await fetch(client, url))   # serialized; no concurrency
+        results.append(await fetch(client, url))
     return results

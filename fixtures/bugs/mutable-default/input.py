@@ -1,3 +1,3 @@
-def add_item(item, bucket=[]):     # mutable default shared across all calls
+def add_item(item, bucket=[]):
     bucket.append(item)
     return bucket
