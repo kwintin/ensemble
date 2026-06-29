@@ -131,7 +131,8 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     # file still trips the guard (the real tamper signal). Does not touch the user's repo.
     RO_IGNORE="$WORK/.ro-ignore"
     printf '%s\n' '__pycache__/' '*.py[cod]' '.serena/' '.pytest_cache/' '.mypy_cache/' \
-      '.ruff_cache/' '.tox/' '.ipynb_checkpoints/' '.DS_Store' 'node_modules/' > "$RO_IGNORE"
+      '.ruff_cache/' '.tox/' '.ipynb_checkpoints/' '.DS_Store' 'node_modules/' \
+      '.venv/' 'venv/' '.coverage' '.cache/' '*.egg-info/' > "$RO_IGNORE"
     # capture the post-setup baseline; a reviewer write is any DELTA from it. This is
     # robust even if the snapshot commit failed (baseline would just be non-empty),
     # so a clean reviewer run never false-positives to exit 5.
