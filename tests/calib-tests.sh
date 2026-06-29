@@ -385,4 +385,18 @@ check "apply via ENSEMBLE_ROSTER exits 0" 0 "$rc"
 check "apply wrote the ENSEMBLE_ROSTER path" 0 0 "$EROST" "$written"
 check "apply via ENSEMBLE_ROSTER persisted the calibration" 0 0 "injection:0.50" "$(python3 -c "import json; print(json.load(open('$EROST'))['endpoints'][0]['strengths'])")"
 
+echo "== ens-calibrate provenance =="
+# CALSTUB / CALR / CALC are still live from the scoring section above (t@codex, 4 fixtures).
+CALOUT="$(ENS_MODEL_CLI="$CALSTUB" ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens-calibrate.sh" run --corpus "$CALC" 2>&1 1>/dev/null)"
+check "calibrate ▶ carries fixture" 0 0 "▶ calibrate t@codex" "$CALOUT"
+check "calibrate ▶ fixture slug" 0 0 "fixture=" "$CALOUT"
+check "calibrate ◀ outcome+fixture" 0 0 "◀ calibrate t@codex · fixture=" "$CALOUT"
+# cli/model in the JSON ran[] records
+CALJSON="$(ENS_MODEL_CLI="$CALSTUB" ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens-calibrate.sh" run --corpus "$CALC" 2>/dev/null)"
+check "calibrate JSON carries cli" 0 0 '"cli": "codex"' "$CALJSON"
+check "calibrate JSON carries model" 0 0 '"model": "gpt-5.5"' "$CALJSON"
+# exit preservation: all-skip corpus must still exit 4 with provenance on
+ENS_MODEL_CLI="$CALSTUB" ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens-calibrate.sh" run --corpus "$CALC2" >/dev/null 2>&1; rc=$?
+check "calibrate exit 4 preserved with provenance on" 4 "$rc"
+
 rm -rf "$CALSTUB" "$CALR" "$CALR2" "$CALC" "$CALC2" "$CALCX" "$CALPRES" "$PERR" "$BADP" "$BADDATA" "$EMPTYP" "$EDATA" "$BASE3" "$PROP3" "$CALDATA" "$D3" "$SROST" "$SR" "$RROST" "$RR" "$KR" "$EROST" "$EAP" 2>/dev/null || true

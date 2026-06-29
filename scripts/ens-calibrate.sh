@@ -14,6 +14,7 @@ ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPTS="$ROOT/scripts"
 source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (read base): ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped
 source "$SCRIPTS/lib/roster.sh"
+source "$SCRIPTS/lib/provenance.sh"
 
 die()  { echo "ens-calibrate: $*" >&2; exit 1; }
 log()  { echo "ens-calibrate: $*" >&2; }
@@ -136,29 +137,34 @@ PY
       local prompt out err rc
       prompt="$(printf '%s\n\n--- %s ---\n%s' "$PROMPT_HEADER" "$finput" "$(cat "$fdir/$finput")")"
       out="$RUN_TEMP/$i.out"; err="$RUN_TEMP/$i.err"
+      ens_provenance calibrate "$ep" "$ROSTER" "fixture=$cat/$name"
       ( cd "$sub" && printf '%s' "$prompt" | "$MODEL_CLI" review --endpoint "$ep" - ) >"$out" 2>"$err"
       rc=$?
       done=$((done+1))
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$ep" "$cat" "$name" "$rc" "$out" "$fdir/expect.json" >> "$JOBS"
-      log "  [$done/$total_runs] $ep  $cat/$name  (rc=$rc)"
     done < "$FIXTSV"
   done
 
   # grade + aggregate
   ENS_SCOPE_EP="$only_ep" ENS_SCOPE_CAT="$only_cat" ENS_CORPUS_TOTAL="$nfix" \
-  ENS_CALIB_DATE="$(date -u +%Y-%m-%d)" \
+  ENS_CALIB_DATE="$(date -u +%Y-%m-%d)" ENS_RUN_TEMP="$RUN_TEMP" \
   python3 - "$JOBS" "$ROSTER" <<'PY'
 import json, os, re, sys
 jobs_path, roster_path = sys.argv[1], sys.argv[2]
 scope_ep  = os.environ.get("ENS_SCOPE_EP","") or None
 scope_cat = os.environ.get("ENS_SCOPE_CAT","") or None
 corpus_total = int(os.environ.get("ENS_CORPUS_TOTAL","0"))
+run_temp  = os.environ.get("ENS_RUN_TEMP","")
 
 try:
     roster = json.load(open(roster_path, encoding="utf-8"))
 except Exception:
     roster = {}
 fam = {e.get("id"): e.get("family") for e in (roster.get("endpoints") or [])
+       if isinstance(e, dict)}
+adp = {e.get("id"): e.get("adapter") for e in (roster.get("endpoints") or [])
+       if isinstance(e, dict)}
+mdl = {e.get("id"): e.get("model") for e in (roster.get("endpoints") or [])
        if isinstance(e, dict)}
 
 def gradable_and_verdict(out_path):
@@ -215,7 +221,11 @@ for line in open(jobs_path, encoding="utf-8"):
     text, verdict = gradable_and_verdict(out_path)
     if text is None:
         agg[ep][cat]["skipped"] += 1
+        outcome = "skip"
         fxs[ep].append({"category":cat,"name":name,"outcome":"skip","reason":reason_for(rc, out_path)})
+        if run_temp:
+            with open(os.path.join(run_temp, ".outcomes"), "a", encoding="utf-8") as _outcomes:
+                _outcomes.write("%s\t%s/%s\t%s\n" % (ep, cat, name, outcome))
         continue
     pats = expect.get("must_match") or []
     mode = expect.get("must_match_mode","all")
@@ -236,6 +246,9 @@ for line in open(jobs_path, encoding="utf-8"):
     else:
         agg[ep][cat]["misses"] += 1; outcome = "miss"
     fxs[ep].append({"category":cat,"name":name,"outcome":outcome,"reason":None})
+    if run_temp:
+        with open(os.path.join(run_temp, ".outcomes"), "a", encoding="utf-8") as _outcomes:
+            _outcomes.write("%s\t%s/%s\t%s\n" % (ep, cat, name, outcome))
 
 ran = []
 total_graded = 0
@@ -248,7 +261,7 @@ for ep in order_eps:
             "score": round(c["hits"]/n, 2) if n > 0 else None,
             "n": n, "hits": c["hits"], "misses": c["misses"], "skipped": c["skipped"],
         }
-    ran.append({"id": ep, "family": fam.get(ep), "categories": cats, "fixtures": fxs[ep]})
+    ran.append({"id": ep, "family": fam.get(ep), "cli": adp.get(ep), "model": mdl.get(ep), "categories": cats, "fixtures": fxs[ep]})
 
 result = {
     "corpus_total": corpus_total,
@@ -259,6 +272,13 @@ result = {
 print(json.dumps(result, indent=2))
 sys.exit(4 if total_graded == 0 else 0)
 PY
+  py_rc=$?
+  if [ -f "$RUN_TEMP/.outcomes" ]; then
+    while IFS=$'\t' read -r _ep _fx _oc; do
+      [ -n "$_ep" ] && ens_provenance_result calibrate "$_ep" "$_oc" "fixture=$_fx"
+    done < "$RUN_TEMP/.outcomes"
+  fi
+  exit "$py_rc"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
