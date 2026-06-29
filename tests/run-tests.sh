@@ -839,6 +839,13 @@ if errs: [print("  -",e) for e in errs]; sys.exit(1)
 PY
 check "plugin manifest + command surface valid" 0 "$rc"
 
+echo "== skill narration contract =="
+for s in multi-model-review delegate-implementation ensemble-calibrate; do
+  grep -qi "cli/model/family" "$ROOT/skills/$s/SKILL.md" \
+    && { echo "ok: $s narrates provenance"; PASS=$((PASS+1)); } \
+    || { echo "FAIL: $s missing provenance narration"; FAIL=$((FAIL+1)); }
+done
+
 source "$HERE/calib-tests.sh"
 
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

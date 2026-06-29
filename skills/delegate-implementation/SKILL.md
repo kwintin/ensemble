@@ -31,3 +31,5 @@ Offload ONE well-scoped unit to the best-fit executor model, **verify it yoursel
 - **Structured failures, not prose.** `signal` is `quota|auth|timeout|missing|failed|empty` (exit 10/11/12/13/2/3) — reroute/retry on it instead of scraping output.
 - **Headless caveat.** Under `claude -p` there is no later turn to collect — verify + merge/discard synchronously in the same run.
 - **Containment.** The worktree is the boundary for *expected* writes. Only codex (`--sandbox workspace-write`) is OS-contained; agy/grok/opencode/kilo rely on cwd + auto-approve and could in principle write elsewhere — the clean-state verify + diff inspection is your backstop.
+
+**Surface provenance.** The engine prints a `▶`/`◀` line per dispatch (cli/model/family); when you report results, name the cli/model/family that produced each verdict/output (and, for delegate, the routing reason) so the user always knows which model did what. Set `ENSEMBLE_PROVENANCE=0` to silence the lines.

@@ -67,3 +67,5 @@ and review relies on family diversity, so an inaccurate prior degrades gracefull
   fixtures per category give a more trustworthy `N`.
 - If `apply` exits 5 it refused (invalid or degraded proposal); the live roster is
   untouched — report and stop.
+
+**Surface provenance.** The engine prints a `▶`/`◀` line per dispatch (cli/model/family); when you report results, name the cli/model/family that produced each verdict/output (and, for delegate, the routing reason) so the user always knows which model did what. Set `ENSEMBLE_PROVENANCE=0` to silence the lines.
