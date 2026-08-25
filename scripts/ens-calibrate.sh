@@ -10,9 +10,9 @@
 #   2 failed (bad input) · 3 empty corpus · 4 nothing measured (all skipped) ·
 #   5 apply refused (invalid/degraded proposed roster).
 set -uo pipefail
-ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}}"
 SCRIPTS="$ROOT/scripts"
-source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (read base): ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped
+source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (read base): explicit roster | host data dirs | shipped
 source "$SCRIPTS/lib/roster.sh"
 source "$SCRIPTS/lib/provenance.sh"
 
@@ -384,9 +384,14 @@ cmd_apply() {
   # resolve write target — byte-identical to the setup wizard's rule (and to roster-path.sh
   # except the intended first-write copy-on-write). $ROOT is always non-empty.
   local target
-  if   [ -n "${ENSEMBLE_ROSTER:-}" ];    then target="$ENSEMBLE_ROSTER"
-  elif [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then target="$CLAUDE_PLUGIN_DATA/roster.json"
-  elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then target="$CLAUDE_PLUGIN_ROOT/roster.json"
+  if   [ -n "${ENSEMBLE_ROSTER:-}" ];     then target="$ENSEMBLE_ROSTER"
+  elif [ -n "${ENSEMBLE_DATA_DIR:-}" ];   then target="$ENSEMBLE_DATA_DIR/roster.json"
+  elif [ -n "${PLUGIN_DATA:-}" ];          then target="$PLUGIN_DATA/roster.json"
+  elif [ -n "${CLAUDE_PLUGIN_DATA:-}" ];   then target="$CLAUDE_PLUGIN_DATA/roster.json"
+  elif [ -n "${CODEX_HOME:-}" ];           then target="$CODEX_HOME/plugins/data/ensemble/roster.json"
+  elif [ -n "${HOME:-}" ];                 then target="$HOME/.codex/plugins/data/ensemble/roster.json"
+  elif [ -n "${PLUGIN_ROOT:-}" ];          then target="$PLUGIN_ROOT/roster.json"
+  elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ];   then target="$CLAUDE_PLUGIN_ROOT/roster.json"
   else target="$ROOT/roster.json"; fi
   local base="$ROSTER"   # the roster propose read (for the modified-endpoint guard + .bak seed)
 

@@ -7,6 +7,25 @@
 # works when sourced standalone (tests) as well as via model-cli.sh
 [ -n "${_ENS_ADAPTER_COMMON:-}" ] || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/adapter_common.sh"
 
+_codex_clear_parent_env() {
+  # Remove the direct launcher/data pointers inherited from an outer Ensemble host,
+  # so a nested codex cannot resolve its way back to this installation.
+  #
+  # Probed against codex-cli 0.149.0: neither --ignore-user-config NOR clearing
+  # CODEX_HOME suppresses codex's own plugin/skill discovery -- a child launched
+  # either way still reports loaded plugins. Env scrubbing therefore cannot make
+  # re-entry impossible on its own; the prompt-level single-agent guard below is
+  # what stops a nested reviewer from dispatching Ensemble again, backed by
+  # --sandbox read-only (review) and --ephemeral.
+  #
+  # CODEX_HOME is deliberately NOT unset (unlike the claude adapter, which has no
+  # use for it): it is where codex finds its credentials, so dropping it would
+  # break auth for anyone on a non-default CODEX_HOME while closing nothing.
+  unset CLAUDECODE CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA \
+    ENSEMBLE_PLUGIN_ROOT ENSEMBLE_DATA_DIR ENSEMBLE_ROSTER \
+    PLUGIN_ROOT PLUGIN_DATA
+}
+
 _codex_schema_file() {  # emits a temp JSON-Schema file path for the verdict shape
   # NOTE: OpenAI structured-output requires additionalProperties:false and every
   # property key listed in required at every object level (real-codex validated in Task 10).
@@ -22,37 +41,62 @@ J
   echo "$f"
 }
 
+_codex_single_agent_guard() { # MODE (review | executor)
+  local mode="$1"
+  if [ "$mode" = "review" ]; then
+    cat <<'TXT'
+You are ONE independent reviewer inside an outer Ensemble run. Complete this review yourself. Do not invoke Ensemble (including its skills, commands, or scripts), model CLIs, other agents, or subagents. Return only the structured review required by the supplied output schema.
+
+--- REVIEW REQUEST ---
+TXT
+  else
+    cat <<'TXT'
+You are ONE independent executor inside an outer Ensemble run. Complete this delegated task yourself. Do not invoke Ensemble (including its skills, commands, or scripts), model CLIs, other agents, or subagents.
+
+TXT
+  fi
+}
+
 codex_review() { # ENDPOINT MODEL EFFORT PROMPT_FILE OUT_FILE
-  local ep="$1" model="$2" eff="$3" pf="$4" of="$5"
+  local _ep="$1" model="$2" eff="$3" pf="$4" of="$5"
   local schema; schema="$(_codex_schema_file)"
-  local prompt; prompt="$(cat "$pf")"
+  local prompt_file; prompt_file="$(mktemp)"
+  { _codex_single_agent_guard review; cat "$pf"; } >"$prompt_file"
   local _e_was_set; [[ $- == *e* ]] && _e_was_set=1 || _e_was_set=0
   set +e
-  ens_run_timeout 600 -- codex exec \
-    --sandbox read-only --ephemeral \
-    -c "model_reasoning_effort=$eff" -m "$model" \
-    --output-schema "$schema" -o "$of" \
-    "$prompt" </dev/null >/dev/null
+  (
+    _codex_clear_parent_env
+    ens_run_timeout 600 -- codex exec \
+      --ignore-user-config --sandbox read-only --ephemeral \
+      -c "model_reasoning_effort=$eff" -m "$model" \
+      --output-schema "$schema" -o "$of" \
+      - <"$prompt_file" >/dev/null
+  )
   local rc=$?
   [ "$_e_was_set" -eq 1 ] && set -e || true
-  rm -f "$schema"
+  rm -f "$schema" "$prompt_file"
   return $rc
 }
 
 codex_run() { # ENDPOINT MODEL EFFORT PROMPT_FILE DIR OUT_FILE  (executor / write mode)
-  local ep="$1" model="$2" eff="$3" pf="$4" dir="$5" of="$6"
-  local prompt; prompt="$(ens_digest_prompt "$pf")"
+  local _ep="$1" model="$2" eff="$3" pf="$4" dir="$5" of="$6"
+  local prompt_file; prompt_file="$(mktemp)"
+  { _codex_single_agent_guard executor; ens_digest_prompt "$pf"; } >"$prompt_file"
   local _e; [[ $- == *e* ]] && _e=1 || _e=0
   set +e
   # --sandbox workspace-write: OS-enforced — the executor may edit files only within
   # the worktree (-C DIR). The freeform response + ===DIGEST=== trailer go to stdout
   # -> OUT; stderr inherits fd2 (model-cli's ERR) for auth/quota classification.
-  ens_run_timeout 1200 -- codex exec \
-    --sandbox workspace-write --ephemeral \
-    -c "model_reasoning_effort=$eff" -m "$model" \
-    -C "$dir" \
-    "$prompt" </dev/null >"$of"
+  (
+    _codex_clear_parent_env
+    ens_run_timeout 1200 -- codex exec \
+      --ignore-user-config --sandbox workspace-write --ephemeral \
+      -c "model_reasoning_effort=$eff" -m "$model" \
+      -C "$dir" \
+      - <"$prompt_file" >"$of"
+  )
   local rc=$?
+  rm -f "$prompt_file"
   [ "$_e" -eq 1 ] && set -e || true
   return $rc
 }

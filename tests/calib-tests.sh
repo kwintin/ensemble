@@ -385,6 +385,19 @@ check "apply via ENSEMBLE_ROSTER exits 0" 0 "$rc"
 check "apply wrote the ENSEMBLE_ROSTER path" 0 0 "$EROST" "$written"
 check "apply via ENSEMBLE_ROSTER persisted the calibration" 0 0 "injection:0.50" "$(python3 -c "import json; print(json.load(open('$EROST'))['endpoints'][0]['strengths'])")"
 
+echo "== calibrate: apply target matches the launcher's data dir =="
+# With no explicit roster and no host data dir, apply must write where the launcher
+# would have pointed the engines — not into the versioned plugin installation.
+CDXH="$(mktemp -d)"
+CAP="$(mktemp)"; python3 -c "import json; r=json.load(open('$ROOT/roster.json')); r['endpoints'][0]['strengths']=['injection:0.42']; r['endpoints'][0]['strengths_basis']='calibrated 2026-06-28'; json.dump(r,open('$CAP','w'))"
+# HOME is redirected too: it is the next target candidate after CODEX_HOME, so a
+# regression in the CODEX_HOME branch must land in the sandbox, never in the real home.
+cwritten="$(env -u ENSEMBLE_ROSTER -u ENSEMBLE_DATA_DIR -u PLUGIN_DATA -u CLAUDE_PLUGIN_DATA -u PLUGIN_ROOT -u CLAUDE_PLUGIN_ROOT CODEX_HOME="$CDXH" HOME="$CDXH/home" bash "$ROOT/scripts/ens-calibrate.sh" apply --proposed "$CAP" 2>/dev/null)"; rc=$?
+check "apply into a fresh CODEX_HOME exits 0" 0 "$rc"
+check "apply targets the launcher data dir" 0 0 "$CDXH/plugins/data/ensemble/roster.json" "$cwritten"
+check "apply created the data dir and persisted the calibration" 0 0 "injection:0.42" "$(python3 -c "import json; print(json.load(open('$CDXH/plugins/data/ensemble/roster.json'))['endpoints'][0]['strengths'])" 2>/dev/null)"
+rm -rf "$CDXH" "$CAP"
+
 echo "== ens-calibrate provenance =="
 # CALSTUB / CALR / CALC are still live from the scoring section above (t@codex, 4 fixtures).
 CALOUT="$(ENS_MODEL_CLI="$CALSTUB" ENSEMBLE_ROSTER="$CALR" bash "$ROOT/scripts/ens-calibrate.sh" run --corpus "$CALC" 2>&1 1>/dev/null)"

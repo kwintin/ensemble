@@ -1,0 +1,40 @@
+{
+  "name": "ensemble",
+  "version": "0.1.1+codex.20260712203824",
+  "description": "Multi-model consensus review, council review, strength-routed delegation, calibration, and endpoint health checks for Codex.",
+  "author": {
+    "name": "Quentin Millpass",
+    "email": "quentin@millpass.ca",
+    "url": "https://github.com/kwintin"
+  },
+  "homepage": "https://github.com/kwintin/ensemble",
+  "repository": "https://github.com/kwintin/ensemble",
+  "keywords": [
+    "multi-model",
+    "code-review",
+    "consensus",
+    "delegation",
+    "orchestration",
+    "calibration"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Ensemble",
+    "shortDescription": "Conduct independent AI CLIs from Codex",
+    "longDescription": "Codex conducts a configurable roster of independent model CLIs, including Claude, for consensus review, de-biased council review, verified delegated implementation, and locally measured routing strengths.",
+    "developerName": "Quentin Millpass",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/kwintin/ensemble",
+    "defaultPrompt": [
+      "Review my current diff with the ensemble.",
+      "Delegate this implementation to the best model.",
+      "Check my ensemble endpoint health."
+    ],
+    "brandColor": "#E9724C"
+  }
+}

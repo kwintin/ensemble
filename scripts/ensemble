@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)" || {
+  echo "ensemble: unable to resolve launcher directory" >&2
+  exit 1
+}
+ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)" || {
+  echo "ensemble: unable to resolve plugin root" >&2
+  exit 1
+}
+
+# The launcher path is authoritative, including from a versioned Codex plugin cache.
+export ENSEMBLE_PLUGIN_ROOT="$ROOT"
+export CLAUDE_PLUGIN_ROOT="$ROOT"
+
+# Keep personalized state outside the versioned plugin installation. An explicit
+# roster remains independent and is resolved first by the engines.
+if [ -n "${ENSEMBLE_DATA_DIR:-}" ]; then
+  _ensemble_data_dir="$ENSEMBLE_DATA_DIR"
+elif [ -n "${PLUGIN_DATA:-}" ]; then
+  _ensemble_data_dir="$PLUGIN_DATA"
+elif [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  _ensemble_data_dir="$CLAUDE_PLUGIN_DATA"
+elif [ -n "${CODEX_HOME:-}" ]; then
+  _ensemble_data_dir="$CODEX_HOME/plugins/data/ensemble"
+elif [ -n "${HOME:-}" ]; then
+  _ensemble_data_dir="$HOME/.codex/plugins/data/ensemble"
+else
+  echo "ensemble: set ENSEMBLE_DATA_DIR when HOME and CODEX_HOME are unavailable" >&2
+  exit 1
+fi
+export ENSEMBLE_DATA_DIR="$_ensemble_data_dir"
+if [ -z "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  export CLAUDE_PLUGIN_DATA="$ENSEMBLE_DATA_DIR"
+fi
+unset _ensemble_data_dir
+
+usage() {
+  cat <<'EOF'
+usage: ensemble <command> [args]
+
+commands:
+  review      run parallel consensus review
+  council     run two-round anonymized council review
+  delegate    run, merge, or discard delegated implementation
+  calibrate   list, run, propose, or apply calibration
+  setup       detect, classify, or validate endpoints
+  doctor      check endpoint health and family quorum
+EOF
+}
+
+command_name="${1:-}"
+case "$command_name" in
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+  '')
+    usage >&2
+    exit 2
+    ;;
+esac
+shift
+
+case "$command_name" in
+  review)    exec "$SCRIPT_DIR/ens-review.sh" "$@" ;;
+  council)   exec "$SCRIPT_DIR/ens-council.sh" "$@" ;;
+  delegate)  exec "$SCRIPT_DIR/ens-delegate.sh" "$@" ;;
+  calibrate) exec "$SCRIPT_DIR/ens-calibrate.sh" "$@" ;;
+  setup)     exec "$SCRIPT_DIR/ens-setup.sh" "$@" ;;
+  doctor)    exec "$SCRIPT_DIR/doctor.sh" "$@" ;;
+  *)
+    echo "ensemble: unknown command '$command_name'" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

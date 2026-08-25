@@ -1,0 +1,32 @@
+{
+  "reviewers_default": ["gpt-5.5@codex", "haiku@claude"],
+  "min_quorum": 2,
+  "endpoints": [
+    {
+      "id": "gpt-5.5@codex",
+      "adapter": "codex",
+      "model": "gpt-5.5",
+      "family": "openai",
+      "effort": "medium",
+      "role": "reviewer",
+      "read_only_mode": "sandbox-read-only",
+      "structured_output": "json",
+      "strengths": ["repo-reasoning", "type-drift"],
+      "latency_tier": "slow",
+      "enabled": true
+    },
+    {
+      "id": "haiku@claude",
+      "adapter": "claude",
+      "model": "haiku",
+      "family": "anthropic",
+      "effort": "medium",
+      "role": "reviewer",
+      "read_only_mode": "safe-mode+permission-mode-plan",
+      "structured_output": "json",
+      "strengths": ["architecture", "judgment"],
+      "latency_tier": "fast",
+      "enabled": true
+    }
+  ]
+}

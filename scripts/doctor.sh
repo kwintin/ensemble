@@ -74,7 +74,7 @@ done < <(ens_endpoints_enabled "$ROSTER")
 NFAM="$(printf '%s' "$HFAMS" | sed '/^$/d' | sort -u | grep -c . | tr -d ' ')"
 MINQ="$(python3 -c "import json; print(int((json.load(open('$ROSTER')).get('min_quorum') or 2)))" 2>/dev/null || echo 2)"
 echo "Healthy reviewer families: ${NFAM} (min_quorum ${MINQ})."
-[ "${NFAM:-0}" -lt "${MINQ:-2}" ] && echo "  warning: below min_quorum — reviews may not reach quorum; run /ensemble:setup to add families."
+[ "${NFAM:-0}" -lt "${MINQ:-2}" ] && echo "  warning: below min_quorum — reviews may not reach quorum; run the Ensemble setup workflow to add families."
 
 [ "$FAIL" -eq 0 ] && echo "All enabled endpoints healthy." || echo "Some endpoints need attention."
 exit "$FAIL"

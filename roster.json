@@ -1,5 +1,5 @@
 {
-  "reviewers_default": ["gpt-5.5@codex", "grok-build@grok", "deepseek-v4-pro@opencode", "glm-5.2@kilo", "mistral-medium-3.5@vibe", "gemini-3.5-flash@agy"],
+  "reviewers_default": ["gpt-5.5@codex", "sonnet@claude", "grok-build@grok", "deepseek-v4-pro@opencode", "glm-5.2@kilo", "mistral-medium-3.5@vibe", "gemini-3.5-flash@agy"],
   "min_quorum": 2,
   "endpoints": [
     {
@@ -13,6 +13,19 @@
       "structured_output": "json",
       "strengths": ["repo-reasoning", "type-drift", "migrations"],
       "latency_tier": "slow",
+      "enabled": true
+    },
+    {
+      "id": "sonnet@claude",
+      "adapter": "claude",
+      "model": "sonnet",
+      "family": "anthropic",
+      "effort": "medium",
+      "role": "both",
+      "read_only_mode": "safe-mode+permission-mode-plan",
+      "structured_output": "json",
+      "strengths": ["architecture", "judgment", "broad-context"],
+      "latency_tier": "medium",
       "enabled": true
     },
     {

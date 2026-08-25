@@ -1,21 +1,33 @@
 ---
 name: multi-model-review
-description: Dispatch a diff, spec, plan, or document to multiple independent model reviewers (via ens-review.sh) for parallel read-only review, then synthesize findings and drive a fix-and-re-review loop to consensus. Use for code/spec/plan review, multi-model sign-off, or when the user asks for consensus/cross-model review.
+description: Dispatch a diff, spec, plan, or document to multiple independent model reviewers for parallel read-only review, then synthesize findings and drive a fix-and-re-review loop to consensus. Use for Ensemble review, code or document review, multi-model sign-off, council review, or whenever the user asks for consensus across models.
 ---
 
 # Multi-Model Review
 
 Drive an independent multi-reviewer consensus loop over the ensemble core.
 
+## Launcher
+
+Prefer the plugin root the host exports, and fall back to this skill's own location.
+Set `SKILL_DIR` to the absolute directory containing this loaded `SKILL.md`, then set:
+
+```bash
+ENSEMBLE_ROOT="${ENSEMBLE_PLUGIN_ROOT:-${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cd "$SKILL_DIR/../.." && pwd)}}}"
+ENSEMBLE="$ENSEMBLE_ROOT/scripts/ensemble"
+```
+
+Never resolve the launcher from the current working directory. Use this launcher for every Ensemble operation.
+
 ## The loop
 1. **Scope.** Build ONE self-contained review prompt from the artifact (a `git diff`, a spec/plan file, or text). Reviewers have no conversation context — inline what they need.
 2. **Dispatch.** Run the engine (it fans out enabled reviewers in parallel, enforces quorum + family-independence + read-only, and returns one combined JSON):
    ```bash
-   git diff | "$CLAUDE_PLUGIN_ROOT/scripts/ens-review.sh" -            # review the diff
-   "$CLAUDE_PLUGIN_ROOT/scripts/ens-review.sh" --prompt-file SPEC.md   # review a file
+   git diff | "$ENSEMBLE" review -            # review the diff
+   "$ENSEMBLE" review --prompt-file SPEC.md   # review a file
    ```
-   Exit `0` = quorum met; `4` = below quorum (tell the user which reviewers are unavailable, suggest `/ensemble:doctor`); `5` = a reviewer tried to write files (reviewers run in a disposable worktree copy, so your real tree is never touched — treat that reviewer's findings as untrusted and see `mutated_files`).
-3. **Synthesize (your judgement).** Read the combined JSON. Build a consensus table (endpoint · verdict · key findings). Structured reviewers (codex) carry detail in `findings[]`; sentinel reviewers (agy/grok/vibe/opencode/kilo) carry it as prose in the `review` field — read both. A finding flagged by 2+ distinct families is high-confidence; a lone finding is assessed against the real code before acting; `family_collisions` are the same model — count them once. Resolve disagreement with evidence from the code, not a vote.
+   Exit `0` = quorum met; `4` = below quorum (tell the user which reviewers are unavailable, suggest `ensemble doctor`); `5` = a reviewer tried to write files (reviewers run in a disposable worktree copy, so your real tree is never touched — treat that reviewer's findings as untrusted and see `mutated_files`).
+3. **Synthesize (your judgement).** Read the combined JSON. Build a consensus table (endpoint · verdict · key findings). Read structured detail from `findings[]` and any sentinel prose from `review`. A finding flagged by 2+ distinct families is high-confidence; assess a lone finding against the real code before acting; `family_collisions` are the same model — count them once. Resolve disagreement with evidence from the code, not a vote.
 4. **Fix → re-review.** If issues: fix them, commit, then re-run the engine with `--reviewers` (a comma-separated list of endpoint ids) limited to the endpoints from the families that flagged issues. Stop when every OK family verdict is APPROVED, or after `max_rounds` (default 3).
 5. **Report.** Reconciled findings (most severe first) + the verdict.
 
@@ -23,14 +35,14 @@ Drive an independent multi-reviewer consensus loop over the ensemble core.
 - Independence is by model **family**, never transport count.
 - Never re-review without fixing first. Commit between rounds so reviewers see current state.
 - A reviewer that degraded (auth/quota/timeout) is skipped while quorum holds — do not block on it.
-- If you ever choose reviewers by topic (a situational preset for, say, an injection-heavy diff), an endpoint's `strengths` may be **scored** `category:score` tags from `/ensemble:calibrate` (e.g. `injection:0.88`) or plain bare tags — read either as a routing prior, not a guarantee; family diversity, not per-topic strength, is what makes the panel sound.
+- If you ever choose reviewers by topic (a situational preset for, say, an injection-heavy diff), an endpoint's `strengths` may be **scored** `category:score` tags from `ensemble calibrate` (e.g. `injection:0.88`) or plain bare tags — read either as a routing prior, not a guarantee; family diversity, not per-topic strength, is what makes the panel sound.
 
 ## Council mode (`--council`)
 For high-stakes review (spec sign-off, auth/billing/crypto), run a **de-biased two-round** review instead of the single pass. ~2× the calls.
 
 1. **Convene.** Run the council engine (it does round-1, anonymizes the reviews, runs a peer round, and returns both rounds + a de-anonymization map):
    ```bash
-   git diff | "$CLAUDE_PLUGIN_ROOT/scripts/ens-council.sh" -
+   git diff | "$ENSEMBLE" council -
    ```
    It emits `{mode, anon_labels, round1, round2}`. Exit `4` = couldn't convene (fewer than 2 OK reviewers); `5` = a reviewer wrote files (untrusted). In the peer round each reviewer saw the anonymized set (labelled A.., identity stripped — including its own) and was asked what the others *missed* or got *wrong*.
 2. **Chair (your judgment).** Read both rounds. Synthesize as the chairman — do **not** just take the majority: weigh how each reviewer's position **moved** between round-1 and the peer round, and side with a strong minority when the artifact supports it. Report with explicit dissent — for each material finding: **Agrees** (who/why), **Clashes** (who/why), **What-You-Lose** (the cost of the call you make). Then the verdict.

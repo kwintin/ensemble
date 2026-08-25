@@ -1,31 +1,31 @@
 # Ensemble
 
-Many models, one conductor. Ensemble is a Claude Code plugin that puts a roster of
-independent AI model CLIs to work together: dispatched in parallel for consensus
-review, or routed by individual strength for delegated coding. Claude stays in charge
-the whole way through. It owns the requirements, reconciles what the other models say,
-and verifies the result before trusting any of it.
+Many models, one conductor. Ensemble is a local Claude Code and Codex plugin that puts
+a roster of independent AI model CLIs to work together: dispatched in parallel for
+consensus review, or routed by individual strength for delegated coding. Whichever host
+you invoke Ensemble from stays in charge. It owns the requirements, reconciles what the
+other models say, and verifies the result before trusting any of it.
 
 <img src="docs/assets/hero.jpg" alt="Ensemble: a conductor figure in orange directing four jewel-toned model-figures reaching toward a shared point of light" width="820">
 
 ## What you get
 
 The thing you configure is a model endpoint: a specific model reached through a
-specific CLI, for example `grok-build` via the `grok` binary, or `gpt-5.5` via
-`codex`. You build a roster of the endpoints you actually have, and four capabilities
-open up inside Claude Code.
+specific CLI, for example `sonnet` via the `claude` binary, `grok-build` via `grok`,
+or `gpt-5.5` via `codex`. You build a roster of the endpoints you actually have, and
+four capabilities open up inside the host agent.
 
 ### Review
 
 Send a diff, spec, plan, or any document to every healthy reviewer at once. Each one
-reviews it independently and read-only, in its own isolated checkout. Claude gathers
-the verdicts and reconciles them: agreement across model families is high-confidence,
-while a lone dissent gets investigated rather than averaged away. It then drives a
-bounded fix-and-re-review loop until the reviewers agree or you call it.
+reviews it independently and read-only, in its own isolated checkout. The conductor
+gathers the verdicts and reconciles them: agreement across model families is
+high-confidence, while a lone dissent gets investigated rather than averaged away. It
+then drives a bounded fix-and-re-review loop until the reviewers agree or you call it.
 
 For changes where one model's blind spot would be expensive, council mode adds a
 second round. The reviewers see each other's findings with identities stripped,
-critique them, and Claude chairs the synthesis. In practice that round is good at two
+critique them, and the conductor chairs the synthesis. In practice that round is good at two
 things: pruning a weak finding that one model over-claimed, and surfacing something the
 first pass missed.
 
@@ -33,7 +33,7 @@ first pass missed.
 
 Hand a well-scoped unit of work to whichever model your roster rates highest for that
 kind of task. It runs write-enabled in a throwaway git worktree on its own branch, so
-it never touches your working tree. Claude then verifies the result against an explicit
+it never touches your working tree. The conductor then verifies the result against an explicit
 contract, in a clean checkout, before anything merges. A model reporting "done" does
 not count on its own; the change has to actually pass.
 
@@ -79,6 +79,7 @@ authenticated, and one CLI is enough to start.
 | CLI | Transport / model | Roles |
 |-----|-------------------|-------|
 | `codex` | OpenAI Codex | reviewer and executor (OS-sandboxed read-only or workspace-write) |
+| `claude` | Anthropic Claude Code | reviewer and executor (safe mode; plan mode for review; native Bash sandbox plus an isolated worktree for writes) |
 | `agy` | Antigravity (Gemini) | reviewer and executor |
 | `grok` | xAI Grok | reviewer and executor |
 | `opencode` | OpenCode (DeepSeek and others) | reviewer and executor |
@@ -87,7 +88,7 @@ authenticated, and one CLI is enough to start.
 
 ## Requirements
 
-- Claude Code, which hosts the plugin.
+- Claude Code or local Codex, which hosts the plugin.
 - `bash`, `python3` (3.8 or newer), and `git` on your `PATH`. The engines are bash with
   small embedded Python, and isolation uses `git worktree`.
 - At least one of the supported model CLIs above, installed and signed in.
@@ -97,30 +98,49 @@ authenticated, and one CLI is enough to start.
 
 ## Install
 
+### Claude Code
+
 ```bash
 /plugin marketplace add kwintin/ensemble
 /plugin install ensemble@ensemble-for-claude-code
 ```
 
+### Codex (local development)
+
+From this repository, register the local marketplace and install its current contents:
+
+```bash
+codex plugin marketplace add /absolute/path/to/ensemble
+codex plugin add ensemble@ensemble-for-claude-code
+```
+
+After installing or reinstalling, start a new Codex thread so it loads the plugin's
+skills. Run `/hooks` once to review and trust the current Ensemble hook hash; Codex
+keeps the optional SessionStart/PostToolUse reminders disabled until you approve it.
+
 Then build your roster from the CLIs you actually have:
 
-```
-/ensemble:setup     detect installed and authenticated CLIs, pick models, write the roster
-/ensemble:doctor    check that endpoints are healthy and you have family quorum
-```
+In Claude Code, run `/ensemble:setup` and `/ensemble:doctor`. In Codex, invoke
+`$ensemble:ensemble-setup` and `$ensemble:ensemble-doctor` (or ask Ensemble to set up
+or diagnose the roster in plain language).
 
-The roster is written to `$CLAUDE_PLUGIN_DATA/roster.json`, which survives plugin
-updates. A shipped default lets the plugin run before you have set anything up.
+The roster is written to the host's persistent plugin data directory, which survives
+plugin updates. Set `ENSEMBLE_DATA_DIR` or `ENSEMBLE_ROSTER` to override it. A shipped
+default lets the plugin run before you have set anything up.
 
 ## Commands
 
-| Command | What it does |
-|---------|--------------|
-| `/ensemble:review [--council] [--reviewers a,b,c] [scope]` | Multi-model consensus review of a diff, spec, plan, or doc. `--council` runs the de-biased two-round anonymized review with Claude as chairman. |
-| `/ensemble:delegate` | Route a well-scoped unit to the strength-matched executor, run it write-enabled in an isolated worktree, and verify against a contract before merging. |
-| `/ensemble:calibrate [--endpoint id] [--category cat]` | Measure each reviewer's per-category hit-rate on a fixture corpus and propose grounded `category:score` strengths. |
-| `/ensemble:setup` | Detect installed and authenticated CLIs and write a personalized roster. |
-| `/ensemble:doctor` | Health-check the roster endpoints and report family and quorum coverage. |
+| Workflow | Claude Code | Codex |
+|----------|-------------|-------|
+| Review | `/ensemble:review` | `$ensemble:multi-model-review` |
+| Delegate | `/ensemble:delegate` | `$ensemble:delegate-implementation` |
+| Calibrate | `/ensemble:calibrate` | `$ensemble:ensemble-calibrate` |
+| Setup | `/ensemble:setup` | `$ensemble:ensemble-setup` |
+| Doctor | `/ensemble:doctor` | `$ensemble:ensemble-doctor` |
+
+Review accepts `--council`, `--reviewers a,b,c`, and an optional scope. The other
+workflows preserve the same setup, delegation, calibration, and health-check behavior
+on both hosts.
 
 ## Safety model
 
@@ -132,11 +152,11 @@ them.
   the run fails closed rather than quietly touching your code. `codex` is additionally
   held to OS-enforced read-only; the others run in their plan or read-only modes.
 - Delegated work is isolated. An executor runs in its own worktree on an
-  `ensemble/delegate-*` branch. Nothing reaches your branch until Claude has verified it
+  `ensemble/delegate-*` branch. Nothing reaches your branch until the conductor has verified it
   in a clean state, and merges are provenance-guarded so the plugin only ever acts on
   worktrees it created.
 - Self-reported success is never trusted. Review verdicts and delegate digests are
-  treated as claims, and Claude checks them against the actual tree or the tests before
+  treated as claims, and the conductor checks them against the actual tree or the tests before
   acting on them.
 
 ## Portability

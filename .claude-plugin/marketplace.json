@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "ensemble",
-      "description": "Multi-model review + strength-routed delegation across heterogeneous AI CLIs (codex, agy, grok, opencode, kilo, vibe). Consensus review, council mode, delegated implementation, and calibration — Claude conducts, the models reach.",
+      "description": "Multi-model review + strength-routed delegation across heterogeneous AI CLIs (codex, claude, agy, grok, opencode, kilo, vibe). Consensus review, council mode, delegated implementation, and calibration — one conductor, many models.",
       "version": "0.1.1",
       "source": "./",
       "author": {

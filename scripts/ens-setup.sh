@@ -17,7 +17,7 @@ die() { echo "ens-setup: $*" >&2; exit 1; }
 #   validate  sanity-check a roster.json the wizard wrote
 # ----------------------------------------------------------------------------
 
-ADAPTERS="codex agy grok opencode kilo vibe"
+ADAPTERS="codex claude agy grok opencode kilo vibe"
 
 sub="${1:-}"; shift || true
 case "$sub" in detect|family|idfor|defaults|validate) : ;; *) die "usage: ens-setup.sh detect|family|idfor|defaults|validate ..." ;; esac
@@ -47,7 +47,7 @@ for a in adapters:
     h,ec=(meta.split("\t")+["0"])[:2] if "\t" in meta else (meta or "error","0")
     models=[m for m in open(os.path.join(work,a+".models"),encoding="utf-8",errors="replace").read().splitlines() if m.strip()]
     out.append({"adapter":a,"health":h,"executor_capable":ec=="1",
-                "structured_output":"json" if a=="codex" else "sentinel",
+                "structured_output":"json" if a in ("codex","claude") else "sentinel",
                 "default_role":"both" if ec=="1" else "reviewer",
                 "model_count":len(models),"models":models})
 print(json.dumps({"adapters":out}, indent=2))
@@ -140,8 +140,9 @@ for i,e in enumerate(eps):
     mdl=e.get("model")
     if not mdl or not isinstance(mdl,str) or not MODEL_RE.match(mdl): errs.append("%s: missing or invalid model '%s'"%(eid,mdl))
     if e.get("role") not in ("reviewer","executor","both"): errs.append("%s: role must be reviewer|executor|both"%eid)
-    if e.get("structured_output") != ("json" if ad=="codex" else "sentinel"):
-        errs.append("%s: structured_output must be '%s' for adapter '%s'"%(eid,"json" if ad=="codex" else "sentinel",ad))
+    expected_output = "json" if ad in ("codex", "claude") else "sentinel"
+    if e.get("structured_output") != expected_output:
+        errs.append("%s: structured_output must be '%s' for adapter '%s'"%(eid,expected_output,ad))
     if e.get("effort") not in ("minimal","low","medium","high","xhigh"): errs.append("%s: invalid effort"%eid)
     if not e.get("family"): errs.append("%s: missing family (diversity needs it)"%eid)
     if not isinstance(e.get("enabled"),bool): errs.append("%s: enabled must be true/false"%eid)

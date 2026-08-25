@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Fake Claude Code CLI for Tier-1 tests. Behavior is controlled by $STUB_MODE.
+
+die_stub() { echo "STUB ERROR: $*" >&2; exit 90; }
+
+has_arg() {
+  local wanted="$1"; shift
+  local arg
+  for arg in "$@"; do [ "$arg" = "$wanted" ] && return 0; done
+  return 1
+}
+
+arg_after() {
+  local wanted="$1"; shift
+  local prev="" arg
+  for arg in "$@"; do
+    [ "$prev" = "$wanted" ] && { printf '%s' "$arg"; return 0; }
+    prev="$arg"
+  done
+  return 1
+}
+
+assert_child_guard() {
+  [ -z "${CLAUDECODE:-}" ] || die_stub "CLAUDECODE leaked into child"
+  [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || die_stub "CLAUDE_PLUGIN_ROOT leaked into child"
+  [ -z "${CLAUDE_PLUGIN_DATA:-}" ] || die_stub "CLAUDE_PLUGIN_DATA leaked into child"
+  [ -z "${ENSEMBLE_PLUGIN_ROOT:-}" ] || die_stub "ENSEMBLE_PLUGIN_ROOT leaked into child"
+  [ -z "${ENSEMBLE_DATA_DIR:-}" ] || die_stub "ENSEMBLE_DATA_DIR leaked into child"
+  [ -z "${ENSEMBLE_ROSTER:-}" ] || die_stub "ENSEMBLE_ROSTER leaked into child"
+  [ -z "${PLUGIN_ROOT:-}" ] || die_stub "PLUGIN_ROOT leaked into child"
+  [ -z "${PLUGIN_DATA:-}" ] || die_stub "PLUGIN_DATA leaked into child"
+  [ -z "${CODEX_HOME:-}" ] || die_stub "CODEX_HOME leaked into child"
+  [ "${CLAUDE_CODE_SAFE_MODE:-}" = "1" ] || die_stub "safe-mode environment is missing"
+  has_arg --safe-mode "$@" || die_stub "--safe-mode is required"
+}
+
+if [ "${1:-}" = "auth" ] && [ "${2:-}" = "status" ]; then
+  has_arg --json "$@" || die_stub "auth status must request JSON"
+  [ -z "${CLAUDECODE:-}" ] || die_stub "CLAUDECODE leaked into auth check"
+  case "${STUB_MODE:-ok}" in
+    auth) printf '{"loggedIn":false,"authMethod":"none"}\n' ;;
+    bad) printf 'not-json\n' ;;
+    notfound) exit 127 ;;
+    *) printf '{"loggedIn":true,"authMethod":"claude.ai"}\n' ;;
+  esac
+  exit 0
+fi
+
+has_arg -p "$@" || die_stub "headless calls must pass -p"
+has_arg --no-session-persistence "$@" || die_stub "session persistence must be disabled"
+assert_child_guard "$@"
+prompt="$(cat)"
+
+mode="$(arg_after --permission-mode "$@")" || die_stub "permission mode is missing"
+tools="$(arg_after --tools "$@")" || die_stub "tool list is missing"
+allowed="$(arg_after --allowed-tools "$@")" || die_stub "allowed-tool list is missing"
+format="$(arg_after --output-format "$@")" || die_stub "output format is missing"
+
+case "$mode" in
+  plan)
+    [ "$tools" = "Read,Glob,Grep" ] || die_stub "review tools are not read-only"
+    [ "$allowed" = "Read,Glob,Grep" ] || die_stub "review allowed-tools are not read-only"
+    [ "$format" = "json" ] || die_stub "review must request JSON output"
+    has_arg --json-schema "$@" || die_stub "review must pass a JSON schema"
+    case "$prompt" in *"Do not invoke Ensemble"*) : ;; *) die_stub "review prompt lacks recursion guard" ;; esac
+    case "${STUB_MODE:-ok}" in
+      auth) echo "Error: please sign in to Claude" >&2; exit 1 ;;
+      quota) echo "Error: rate limit exceeded" >&2; exit 1 ;;
+      notfound) exit 127 ;;
+      empty) printf '{"type":"result","subtype":"success","result":""}\n'; exit 0 ;;
+      bad) printf 'not-json\n'; exit 0 ;;
+      error_envelope) printf '{"type":"result","subtype":"error","is_error":true,"structured_output":{"verdict":"APPROVED","findings":[]}}\n'; exit 0 ;;
+      invalid_structured) printf '{"type":"result","subtype":"success","structured_output":{"verdict":"CHANGES","findings":[{"file":"x.py","line":"one","severity":"low","issue":"bad line type"}]}}\n'; exit 0 ;;
+      mutate)
+        : > ens_review_mutation_probe.tmp
+        printf '{"type":"result","subtype":"success","structured_output":{"verdict":"APPROVED","findings":[]}}\n'
+        exit 0 ;;
+      *)
+        printf '{"type":"result","subtype":"success","structured_output":{"verdict":"CHANGES","findings":[{"file":"x.py","line":1,"severity":"low","issue":"stub"}]}}\n'
+        exit 0 ;;
+    esac
+    ;;
+  acceptEdits)
+    [ "$tools" = "Read,Glob,Grep,Edit,Write,Bash" ] || die_stub "executor tool list is incomplete"
+    [ "$allowed" = "Read,Glob,Grep,Edit,Write,Bash" ] || die_stub "executor allowed-tools are incomplete"
+    [ "$format" = "text" ] || die_stub "executor must request text output"
+    settings="$(arg_after --settings "$@")" || die_stub "executor sandbox settings are missing"
+    case "$settings" in
+      *'"enabled":true'*'"failIfUnavailable":true'*'"allowUnsandboxedCommands":false'*) : ;;
+      *) die_stub "executor sandbox is not fail-closed" ;;
+    esac
+    has_arg --json-schema "$@" && die_stub "executor must not request a review schema"
+    case "$prompt" in *"Do not invoke Ensemble"*) : ;; *) die_stub "executor prompt lacks recursion guard" ;; esac
+    case "$prompt" in *"===DIGEST==="*) : ;; *) die_stub "executor prompt must request a digest" ;; esac
+    case "${STUB_MODE:-ok}" in
+      auth) echo "Error: please sign in to Claude" >&2; exit 1 ;;
+      quota) echo "Error: quota exceeded" >&2; exit 1 ;;
+      notfound) exit 127 ;;
+      empty) exit 0 ;;
+      run_noop)
+        printf 'Nothing to do.\n===DIGEST===\nfiles: \ndecisions: none\ncontext: no-op\n===END===\n'
+        exit 0 ;;
+      run_artifact)
+        printf 'real change\n' > ens_delegate_stub.txt
+        mkdir -p __pycache__
+        : > __pycache__/x.cpython-314.pyc
+        printf 'Implemented.\n===DIGEST===\nfiles: ens_delegate_stub.txt\ndecisions: - wrote file\ncontext: produced bytecode too\n===END===\n'
+        exit 0 ;;
+      run_only_artifact)
+        mkdir -p __pycache__
+        : > __pycache__/x.cpython-314.pyc
+        printf 'Only produced bytecode.\n===DIGEST===\nfiles: \ndecisions: none\ncontext: artifacts only\n===END===\n'
+        exit 0 ;;
+      *)
+        printf 'stub executor was here\n' > ens_delegate_stub.txt
+        printf 'Implemented.\n===DIGEST===\nfiles: ens_delegate_stub.txt\ndecisions: - stub\ncontext: stub run\n===END===\n'
+        exit 0 ;;
+    esac
+    ;;
+  *) die_stub "unexpected permission mode '$mode'" ;;
+esac

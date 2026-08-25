@@ -4,10 +4,26 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 source "$HERE/lib.sh"
 export PATH="$HERE/stubs:$PATH"   # stubs shadow real CLIs
+
+# The suite is normally run from inside a host agent (Claude Code, Codex), which
+# exports its own plugin/session vars. The stubs assert that no host environment
+# leaks into a nested CLI, and several tests invoke a stub directly rather than
+# through an adapter, so scrub the host env here — otherwise the harness's own
+# inherited vars fail those asserts, and an inherited CLAUDE_CODE_SAFE_MODE would
+# mask an adapter that forgot to set it.
+unset CLAUDECODE CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA \
+  ENSEMBLE_PLUGIN_ROOT ENSEMBLE_DATA_DIR ENSEMBLE_ROSTER \
+  PLUGIN_ROOT PLUGIN_DATA CODEX_HOME CLAUDE_CODE_SAFE_MODE
+
 PASS=0; FAIL=0
 
+# The suite dispatches real delegate runs, which create git worktrees. Snapshot the
+# checkout so the final check can prove none of them leaked into this repo.
+WT_BEFORE="$(git -C "$ROOT" worktree list | wc -l | tr -d ' ')"
+BR_BEFORE="$(git -C "$ROOT" branch --list 'ensemble/*' | wc -l | tr -d ' ')"
+
 echo "== harness =="
-out="$(STUB_MODE=ok codex exec --sandbox read-only "hi" 2>/dev/null)"; rc=$?
+out="$(STUB_MODE=ok codex exec --ignore-user-config --sandbox read-only "Do not invoke Ensemble; hi" 2>/dev/null)"; rc=$?
 check "codex stub returns ok" 0 "$rc" "STUB_OK" "$out"
 
 echo "== timeout guard =="
@@ -42,6 +58,10 @@ check "codex adapter" 0 0 "codex" "$(ens_endpoint_field "$R" gpt-5.5@codex adapt
 check "codex model"   0 0 "gpt-5.5" "$(ens_endpoint_field "$R" gpt-5.5@codex model)"
 check "codex family"  0 0 "openai"  "$(ens_family_of "$R" gpt-5.5@codex)"
 check "enabled lists codex" 0 0 "gpt-5.5@codex" "$(ens_endpoints_enabled "$R")"
+check "claude adapter" 0 0 "claude" "$(ens_endpoint_field "$R" sonnet@claude adapter)"
+check "claude model"   0 0 "sonnet" "$(ens_endpoint_field "$R" sonnet@claude model)"
+check "claude family"  0 0 "anthropic" "$(ens_family_of "$R" sonnet@claude)"
+check "enabled lists claude" 0 0 "sonnet@claude" "$(ens_endpoints_enabled "$R")"
 
 echo "== provenance helper =="
 source "$ROOT/scripts/lib/provenance.sh"
@@ -106,9 +126,15 @@ echo "== codex adapter =="
 source "$ROOT/scripts/lib/timeout.sh"
 source "$ROOT/scripts/adapters/codex.sh"
 pf="$(mktemp)"; of="$(mktemp)"; echo "review this diff" >"$pf"
-STUB_MODE=ok codex_review gpt-5.5@codex gpt-5.5 medium "$pf" "$of"; rc=$?
+CLAUDECODE=parent CLAUDE_PLUGIN_ROOT=/parent/claude CLAUDE_PLUGIN_DATA=/parent/claude-data \
+  ENSEMBLE_PLUGIN_ROOT=/parent/ensemble ENSEMBLE_DATA_DIR=/parent/ensemble-data \
+  ENSEMBLE_ROSTER=/parent/roster PLUGIN_ROOT=/parent/plugin PLUGIN_DATA=/parent/data \
+  STUB_MODE=ok codex_review gpt-5.5@codex gpt-5.5 medium "$pf" "$of"; rc=$?
 check "codex_review rc 0" 0 "$rc"
 check "codex_review wrote verdict json" 0 0 '"verdict"' "$(cat "$of")"
+head -c 1500000 /dev/zero | tr '\0' x >"$pf"
+STUB_MODE=ok codex_review gpt-5.5@codex gpt-5.5 low "$pf" "$of"; rc=$?
+check "codex large prompt uses stdin without ARG_MAX failure" 0 "$rc"
 check "codex_health ok" 0 0 "ok" "$(STUB_MODE=ok codex_health)"
 check "codex_health auth" 0 0 "auth" "$(STUB_MODE=auth codex_health)"
 check "codex_list_models" 0 0 "gpt-5.5" "$(STUB_MODE=ok codex_list_models)"
@@ -116,23 +142,56 @@ rm -f "$pf" "$of"
 sandt="$(mktemp)"; STUB_MODE=ok codex exec -o "$sandt" "p" >/dev/null 2>&1; rc=$?
 check "stub rejects missing --sandbox read-only -> 90" 90 "$rc"; rm -f "$sandt"
 
-# --- adapter stdin guard: every review/run exec MUST redirect stdin from /dev/null ---
-# A non-interactive CLI that reads stdin will hang on an inherited non-TTY pipe in a
-# backgrounded dispatch ("Reading additional input from stdin..."). This contract test
-# fails if any review/run path drops the </dev/null redirect.
+echo "== claude adapter =="
+source "$ROOT/scripts/adapters/claude.sh"
+pf="$(mktemp)"; of="$(mktemp)"; echo "review this diff" >"$pf"
+CLAUDECODE=parent CLAUDE_PLUGIN_ROOT=/parent/claude CLAUDE_PLUGIN_DATA=/parent/claude-data \
+  ENSEMBLE_PLUGIN_ROOT=/parent/ensemble ENSEMBLE_DATA_DIR=/parent/ensemble-data \
+  ENSEMBLE_ROSTER=/parent/roster PLUGIN_ROOT=/parent/plugin PLUGIN_DATA=/parent/data \
+  CODEX_HOME=/parent/codex STUB_MODE=ok \
+  claude_review sonnet@claude sonnet medium "$pf" "$of"; rc=$?
+check "claude_review rc 0" 0 "$rc"
+check "claude_review extracted verdict json" 0 0 '"verdict":"CHANGES"' "$(cat "$of")"
+printf '%s\n' '{"verdict":"APPROVED","findings":[]}' >"$of"
+STUB_MODE=bad claude_review sonnet@claude sonnet medium "$pf" "$of"; rc=$?
+check "claude malformed envelope returns cli rc 0" 0 "$rc"
+check "claude malformed envelope clears stale output" 0 0 "0" "$(wc -c <"$of" | tr -d ' ')"
+printf '%s\n' '{"verdict":"APPROVED","findings":[]}' >"$of"
+STUB_MODE=error_envelope claude_review sonnet@claude sonnet medium "$pf" "$of"; rc=$?
+check "claude error envelope returns cli rc 0" 0 "$rc"
+check "claude error envelope clears output" 0 0 "0" "$(wc -c <"$of" | tr -d ' ')"
+printf '%s\n' '{"verdict":"APPROVED","findings":[]}' >"$of"
+STUB_MODE=invalid_structured claude_review sonnet@claude sonnet medium "$pf" "$of"; rc=$?
+check "claude invalid structured result returns cli rc 0" 0 "$rc"
+check "claude invalid structured result is rejected" 0 0 "0" "$(wc -c <"$of" | tr -d ' ')"
+head -c 1500000 /dev/zero | tr '\0' x >"$pf"
+STUB_MODE=ok claude_review sonnet@claude sonnet low "$pf" "$of"; rc=$?
+check "claude large prompt uses stdin without ARG_MAX failure" 0 "$rc"
+check "claude minimal effort maps to low" 0 0 "low" "$(_claude_effort minimal)"
+check "claude_health ok" 0 0 "ok" "$(STUB_MODE=ok claude_health)"
+check "claude_health auth" 0 0 "auth" "$(STUB_MODE=auth claude_health)"
+check "claude_list_models" 0 0 "sonnet" "$(STUB_MODE=ok claude_list_models)"
+rm -f "$pf" "$of"
+
+# --- adapter stdin guard: every review/run exec MUST provide explicit stdin ---
+# A non-interactive CLI that inherits a non-TTY pipe can hang in a backgrounded
+# dispatch. Most transports get /dev/null; Claude and Codex intentionally get a
+# prompt file so large artifacts do not cross ARG_MAX.
 echo "== adapter stdin guard =="
 python3 - "$ROOT" <<'PY'; rc=$?
 import re, sys, os
 root = sys.argv[1]
 targets = [
-    ("scripts/lib/adapter_common.sh", "ens_text_cli_review"),       # agy/grok/vibe review+run
-    ("scripts/lib/adapter_common.sh", "ens_opencode_fork_review"),  # opencode/kilo review
-    ("scripts/lib/adapter_common.sh", "ens_opencode_fork_run"),     # opencode/kilo run
-    ("scripts/adapters/codex.sh", "codex_review"),
-    ("scripts/adapters/codex.sh", "codex_run"),
+    ("scripts/lib/adapter_common.sh", "ens_text_cli_review", "devnull"),       # agy/grok/vibe review+run
+    ("scripts/lib/adapter_common.sh", "ens_opencode_fork_review", "devnull"),  # opencode/kilo review
+    ("scripts/lib/adapter_common.sh", "ens_opencode_fork_run", "devnull"),     # opencode/kilo run
+    ("scripts/adapters/codex.sh", "codex_review", "prompt_file"),
+    ("scripts/adapters/codex.sh", "codex_run", "prompt_file"),
+    ("scripts/adapters/claude.sh", "claude_review", "prompt_file"),
+    ("scripts/adapters/claude.sh", "claude_run", "prompt_file"),
 ]
 errs = []
-for rel, fn in targets:
+for rel, fn, stdin_mode in targets:
     src = open(os.path.join(root, rel), encoding="utf-8").read()
     m = re.search(r'(?m)^' + re.escape(fn) + r'\(\)\s*\{', src)
     if not m:
@@ -140,12 +199,15 @@ for rel, fn in targets:
     body = src[m.end():]
     end = re.search(r'(?m)^\}', body)
     body = body[:end.start()] if end else body
-    if "</dev/null" not in body and "0</dev/null" not in body:
-        errs.append("%s:%s does not redirect stdin from /dev/null (codex-hang risk)" % (rel, fn))
+    if stdin_mode == "devnull":
+        if "</dev/null" not in body and "0</dev/null" not in body:
+            errs.append("%s:%s does not close inherited stdin (hang risk)" % (rel, fn))
+    elif not re.search(r'<\s*"\$prompt_file"', body):
+        errs.append("%s:%s does not redirect stdin from its explicit prompt file" % (rel, fn))
 if errs:
     [print("  -", e) for e in errs]; sys.exit(1)
 PY
-check "every adapter review/run redirects stdin from /dev/null" 0 "$rc"
+check "every adapter review/run uses explicit non-inherited stdin" 0 "$rc"
 
 # --- sentinel adapters (agy/grok/vibe/opencode/kilo): verdict via ===VERDICT=== block ---
 VIBECFG="$ROOT/tests/fixtures/vibe-config.toml"
@@ -185,7 +247,7 @@ wscfg="$(mktemp)"; printf '[[providers]]\nname = "mistral"\napi_key = "   "\n' >
 check "vibe_health auth (whitespace-only api_key)" 0 0 "auth" "$(ENS_VIBE_CONFIG="$wscfg" vibe_health)"; rm -f "$wscfg"
 envcfg="$(mktemp)"; printf '[[providers]]\nname = "mistral"\napi_key_env_var = "ENS_TEST_VIBE_KEY"\n' > "$envcfg"
 check "vibe_health ok (api_key_env_var set)" 0 0 "ok" "$(ENS_TEST_VIBE_KEY=secret ENS_VIBE_CONFIG="$envcfg" vibe_health)"
-check "vibe_health auth (api_key_env_var unset)" 0 0 "auth" "$(ENS_TEST_VIBE_KEY= ENS_VIBE_CONFIG="$envcfg" vibe_health)"; rm -f "$envcfg"
+check "vibe_health auth (api_key_env_var unset)" 0 0 "auth" "$(ENS_TEST_VIBE_KEY='' ENS_VIBE_CONFIG="$envcfg" vibe_health)"; rm -f "$envcfg"
 
 echo "== model-cli review =="
 pf="$(mktemp)"; echo "find bugs" > "$pf"
@@ -196,6 +258,11 @@ out="$(printf 'find bugs' | STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" rev
 check "auth failure -> exit 11" 11 "$rc"
 out="$(printf 'find bugs' | STUB_MODE=bad bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex - 2>/dev/null)"; rc=$?
 check "ERROR verdict -> exit 3" 3 "$rc"
+out="$(STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" review --endpoint sonnet@claude --prompt-file "$pf" 2>/dev/null)"; rc=$?
+check "claude model-cli review rc 0" 0 "$rc"
+check "claude model-cli review stamps endpoint" 0 0 '"endpoint": "sonnet@claude"' "$out"
+out="$(printf 'find bugs' | STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" review --endpoint sonnet@claude - 2>/dev/null)"; rc=$?
+check "claude auth failure -> exit 11" 11 "$rc"
 rm -f "$pf"
 out="$(printf x | STUB_MODE=notfound bash "$ROOT/scripts/model-cli.sh" review --endpoint gpt-5.5@codex - 2>/dev/null)"; rc=$?
 check "missing codex (127) -> exit 13" 13 "$rc"
@@ -234,7 +301,7 @@ rm -f "$pf"
 echo "== doctor =="
 out="$(ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=ok bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
 check "doctor exit 0 (all healthy)" 0 "$rc"
-for ep in gpt-5.5@codex grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo mistral-medium-3.5@vibe gemini-3.5-flash@agy; do
+for ep in gpt-5.5@codex sonnet@claude grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo mistral-medium-3.5@vibe gemini-3.5-flash@agy; do
   check "doctor: $ep ok" 0 0 "$ep: ok" "$out"
 done
 out="$(ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=auth bash "$ROOT/scripts/doctor.sh" 2>&1)"; rc=$?
@@ -255,7 +322,7 @@ root=sys.argv[1]; errs=[]
 pj=json.load(open(os.path.join(root,".claude-plugin","plugin.json")))
 if pj.get("name")!="ensemble": errs.append("plugin name != ensemble")
 if not pj.get("version"): errs.append("missing version")
-for s in ("scripts/model-cli.sh","scripts/doctor.sh","tests/run-tests.sh","tests/stubs/codex"):
+for s in ("scripts/model-cli.sh","scripts/doctor.sh","scripts/ensemble","tests/run-tests.sh","tests/stubs/codex","tests/stubs/claude"):
     p=os.path.join(root,s)
     if not os.path.isfile(p): errs.append("missing "+s)
     elif not (os.stat(p).st_mode & stat.S_IXUSR): errs.append("not executable: "+s)
@@ -500,7 +567,7 @@ rc=0; STUB_MODE=auth bash "$ROOT/scripts/model-cli.sh" run --endpoint gpt-5.5@co
 check "run auth -> exit 11" 11 "$rc"
 rm -rf "$rundir"; rm -f "$pf"
 # every executor adapter (write mode) -> digest + a file written inside --dir; auth -> 11
-for ep in gemini-3.5-flash@agy grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo; do
+for ep in sonnet@claude gemini-3.5-flash@agy grok-build@grok deepseek-v4-pro@opencode glm-5.2@kilo; do
   rd="$(mktemp -d)"; pf2="$(mktemp)"; echo "implement the unit" > "$pf2"
   out="$(STUB_MODE=ok bash "$ROOT/scripts/model-cli.sh" run --endpoint "$ep" --prompt-file "$pf2" --dir "$rd" 2>/dev/null)"; rc=$?
   check "model-cli run $ep -> rc 0" 0 "$rc"
@@ -581,18 +648,27 @@ check "merge refuses a non-delegate worktree -> exit 1" 1 "$rc"
 ( cd "$pg" && git worktree remove --force "$pg/feat" 2>/dev/null ); rm -rf "$pg"
 
 echo "== ens-delegate provenance =="
+# These are real dispatches: each one creates a git worktree in the repo it is run
+# from. Run them inside a disposable repo (and tear the worktrees down afterwards),
+# otherwise every test run leaks an ensemble/delegate-tmp.* worktree + branch into
+# the ensemble checkout. ENSEMBLE_ROSTER stays the shipped roster so the provenance
+# strings describe a real endpoint.
+dgp="$(mktemp -d)"; ( cd "$dgp" && git init -q && printf 'base\n' > base.txt && git add base.txt && git -c user.email=t@t -c user.name=t commit -q -m init )
 DGP="$(mktemp)"; echo "do a thing" > "$DGP"
-DOUT="$(STUB_MODE=ok bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" --reason "routed: bugs" 2>&1 1>/dev/null)"
+DOUT="$(cd "$dgp" && STUB_MODE=ok ENSEMBLE_ROSTER="$ROOT/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" --reason "routed: bugs" 2>&1 1>/dev/null)"
 check "delegate ▶ with reason" 0 0 "▶ delegate gpt-5.5@codex · cli=codex · model=gpt-5.5 · family=openai · routed: bugs" "$DOUT"
 check "delegate ◀ status" 0 0 "◀ delegate gpt-5.5@codex → ok" "$DOUT"
 # ◀ status must reflect the EXECUTOR exit, not the JSON-writer's: a FAILING executor
 # (whose result JSON still builds fine, py_rc=0) must report → failed, not → ok.
-DFOUT="$(STUB_MODE=quota bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" 2>&1 1>/dev/null)"
+DFOUT="$(cd "$dgp" && STUB_MODE=quota ENSEMBLE_ROSTER="$ROOT/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" 2>&1 1>/dev/null)"
 check "delegate ◀ status reflects executor failure" 0 0 "◀ delegate gpt-5.5@codex → failed" "$DFOUT"
-DJSON="$(STUB_MODE=ok bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" 2>/dev/null)"
+DJSON="$(cd "$dgp" && STUB_MODE=ok ENSEMBLE_ROSTER="$ROOT/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint gpt-5.5@codex --prompt-file "$DGP" 2>/dev/null)"
 check "delegate run JSON carries family" 0 0 '"family": "openai"' "$DJSON"
 check "delegate run JSON carries cli" 0 0 '"cli": "codex"' "$DJSON"
-rm -f "$DGP"
+( cd "$dgp" && git worktree list --porcelain | awk '/^worktree /{print $2}' | tail -n +2 | while read -r w; do
+    git worktree remove --force "$w" >/dev/null 2>&1; rm -rf "$w"
+  done )
+rm -rf "$dgp"; rm -f "$DGP"
 
 echo "== review surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
@@ -604,10 +680,10 @@ for f in ("skills/multi-model-review/SKILL.md","commands/review.md"):
     t=open(p).read()
     if not (t.startswith("---") and t.count("---")>=2): errs.append("no frontmatter: "+f)
 skill_txt=open(os.path.join(root,"skills/multi-model-review/SKILL.md")).read()
-if "ens-review.sh" not in skill_txt:
-    errs.append("skill does not reference ens-review.sh")
-if "ens-council.sh" not in skill_txt:
-    errs.append("skill does not document council mode (ens-council.sh)")
+if "scripts/ensemble" not in skill_txt or '"$ENSEMBLE" review' not in skill_txt:
+    errs.append("skill does not use the host-neutral review launcher")
+if '"$ENSEMBLE" council' not in skill_txt:
+    errs.append("skill does not document council mode through the launcher")
 for s in ("scripts/ens-review.sh","scripts/ens-council.sh"):
     if not os.access(os.path.join(root,s), os.X_OK):
         errs.append(s+" not executable")
@@ -626,7 +702,8 @@ for f in ("skills/delegate-implementation/SKILL.md","commands/delegate.md","agen
     t=open(p).read()
     if not (t.startswith("---") and t.count("---")>=2): errs.append("no frontmatter: "+f)
 skill=open(os.path.join(root,"skills/delegate-implementation/SKILL.md")).read()
-if "ens-delegate.sh" not in skill: errs.append("delegate skill does not reference ens-delegate.sh")
+if "scripts/ensemble" not in skill or '"$ENSEMBLE" delegate' not in skill:
+    errs.append("delegate skill does not use the host-neutral launcher")
 agent=open(os.path.join(root,"agents/ensemble-delegate.md")).read()
 # the constrained subagent must NOT grant Write/Edit (worktree is the file-acting path)
 import re
@@ -664,22 +741,54 @@ for bad in \
  '{"endpoints":[{"id":"deepseek/v4@opencode","adapter":"opencode","model":"opencode-go/deepseek-v4-pro","family":"deepseek","effort":"medium","role":"reviewer","structured_output":"sentinel","enabled":true}]}' \
  '{"endpoints":[{"id":"a..b@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"medium","role":"reviewer","structured_output":"json","enabled":true}]}' \
  '{"endpoints":[{"id":"x@codex","adapter":"codex","family":"openai","effort":"medium","role":"reviewer","structured_output":"json","enabled":true}]}' \
- '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"medium","role":"reviewer","structured_output":"sentinel","enabled":true}]}' ; do
+ '{"endpoints":[{"id":"x@codex","adapter":"codex","model":"gpt-5.5","family":"openai","effort":"medium","role":"reviewer","structured_output":"sentinel","enabled":true}]}' \
+ '{"endpoints":[{"id":"sonnet@claude","adapter":"claude","model":"sonnet","family":"anthropic","effort":"medium","role":"reviewer","structured_output":"sentinel","enabled":true}]}' ; do
   bf="$(mktemp)"; printf '%s' "$bad" > "$bf"; bash "$ROOT/scripts/ens-setup.sh" validate "$bf" >/dev/null 2>&1; check "validate rejects bad roster -> 1" 1 "$?"; rm -f "$bf"
 done
 
 echo "== ens-setup: detect (stubs) =="
 det="$(PATH="$ROOT/tests/stubs:$PATH" ENS_VIBE_CONFIG="$ROOT/tests/fixtures/vibe-config.toml" STUB_MODE=ok bash "$ROOT/scripts/ens-setup.sh" detect)"
-check "detect lists all six transports" 0 0 '"adapter": "vibe"' "$det"
+check "detect lists all seven transports" 0 0 '"adapter": "claude"' "$det"
 check "detect marks codex executor_capable" 0 0 '"executor_capable": true' "$det"
+check "detect marks claude structured JSON" 0 0 '"structured_output": "json"' "$(printf '%s' "$det" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(next(x for x in d["adapters"] if x["adapter"]=="claude")))')"
 check "detect marks vibe reviewer-only" 0 0 '"default_role": "reviewer"' "$det"
 
 echo "== roster path resolution =="
-( ENSEMBLE_ROSTER=/x/y.json; unset CLAUDE_PLUGIN_DATA; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "/x/y.json" ] ) && { echo "ok: ENSEMBLE_ROSTER wins"; PASS=$((PASS+1)); } || { echo "FAIL: ENSEMBLE_ROSTER precedence"; FAIL=$((FAIL+1)); }
-pdata="$(mktemp -d)"; cp "$ROOT/roster.json" "$pdata/roster.json"
-( unset ENSEMBLE_ROSTER; CLAUDE_PLUGIN_DATA="$pdata"; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$pdata/roster.json" ] ) && { echo "ok: CLAUDE_PLUGIN_DATA preferred"; PASS=$((PASS+1)); } || { echo "FAIL: CLAUDE_PLUGIN_DATA precedence"; FAIL=$((FAIL+1)); }
-( unset ENSEMBLE_ROSTER; unset CLAUDE_PLUGIN_DATA; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$ROOT/roster.json" ] ) && { echo "ok: falls back to shipped roster"; PASS=$((PASS+1)); } || { echo "FAIL: shipped fallback"; FAIL=$((FAIL+1)); }
-rm -rf "$pdata"
+( ENSEMBLE_ROSTER=/x/y.json; unset ENSEMBLE_DATA_DIR PLUGIN_DATA CLAUDE_PLUGIN_DATA; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "/x/y.json" ] ) && { echo "ok: ENSEMBLE_ROSTER wins"; PASS=$((PASS+1)); } || { echo "FAIL: ENSEMBLE_ROSTER precedence"; FAIL=$((FAIL+1)); }
+edata="$(mktemp -d)"; plugdata="$(mktemp -d)"; pdata="$(mktemp -d)"
+cp "$ROOT/roster.json" "$edata/roster.json"; cp "$ROOT/roster.json" "$plugdata/roster.json"; cp "$ROOT/roster.json" "$pdata/roster.json"
+( unset ENSEMBLE_ROSTER; ENSEMBLE_DATA_DIR="$edata"; PLUGIN_DATA="$plugdata"; CLAUDE_PLUGIN_DATA="$pdata"; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$edata/roster.json" ] ) && { echo "ok: ENSEMBLE_DATA_DIR wins host data precedence"; PASS=$((PASS+1)); } || { echo "FAIL: ENSEMBLE_DATA_DIR precedence"; FAIL=$((FAIL+1)); }
+( unset ENSEMBLE_ROSTER ENSEMBLE_DATA_DIR; PLUGIN_DATA="$plugdata"; CLAUDE_PLUGIN_DATA="$pdata"; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$plugdata/roster.json" ] ) && { echo "ok: PLUGIN_DATA precedes Claude alias"; PASS=$((PASS+1)); } || { echo "FAIL: PLUGIN_DATA precedence"; FAIL=$((FAIL+1)); }
+( unset ENSEMBLE_ROSTER ENSEMBLE_DATA_DIR PLUGIN_DATA; CLAUDE_PLUGIN_DATA="$pdata"; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$pdata/roster.json" ] ) && { echo "ok: CLAUDE_PLUGIN_DATA supported"; PASS=$((PASS+1)); } || { echo "FAIL: CLAUDE_PLUGIN_DATA precedence"; FAIL=$((FAIL+1)); }
+( unset ENSEMBLE_ROSTER ENSEMBLE_DATA_DIR PLUGIN_DATA CLAUDE_PLUGIN_DATA; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$ROOT/roster.json" ] ) && { echo "ok: falls back to shipped roster"; PASS=$((PASS+1)); } || { echo "FAIL: shipped fallback"; FAIL=$((FAIL+1)); }
+pdata2="$(mktemp -d)"; cp "$ROOT/roster.json" "$pdata2/roster.json"
+rm -rf "$edata" "$plugdata" "$pdata"
+
+# The launcher's last-resort data dir must resolve identically when an engine is
+# sourced WITHOUT the launcher (commands/*.md call the engines directly), so a
+# roster written by setup is never invisible to the direct path.
+cdx="$(mktemp -d)"; mkdir -p "$cdx/plugins/data/ensemble" "$cdx/home/.codex/plugins/data/ensemble"
+cp "$ROOT/roster.json" "$cdx/plugins/data/ensemble/roster.json"
+cp "$ROOT/roster.json" "$cdx/home/.codex/plugins/data/ensemble/roster.json"
+( unset ENSEMBLE_ROSTER ENSEMBLE_DATA_DIR PLUGIN_DATA CLAUDE_PLUGIN_DATA; CODEX_HOME="$cdx"; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$cdx/plugins/data/ensemble/roster.json" ] ) && { echo "ok: CODEX_HOME data roster found without the launcher"; PASS=$((PASS+1)); } || { echo "FAIL: CODEX_HOME data roster precedence"; FAIL=$((FAIL+1)); }
+( unset ENSEMBLE_ROSTER ENSEMBLE_DATA_DIR PLUGIN_DATA CLAUDE_PLUGIN_DATA CODEX_HOME; HOME="$cdx/home"; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$cdx/home/.codex/plugins/data/ensemble/roster.json" ] ) && { echo "ok: default data roster found without the launcher"; PASS=$((PASS+1)); } || { echo "FAIL: default data roster precedence"; FAIL=$((FAIL+1)); }
+( unset ENSEMBLE_ROSTER ENSEMBLE_DATA_DIR PLUGIN_DATA CLAUDE_PLUGIN_DATA; CLAUDE_PLUGIN_DATA="$pdata2"; CODEX_HOME="$cdx"; source "$ROOT/scripts/lib/roster-path.sh"; [ "$ROSTER" = "$pdata2/roster.json" ] ) && { echo "ok: host data dir still beats the codex fallback"; PASS=$((PASS+1)); } || { echo "FAIL: host data dir vs codex fallback"; FAIL=$((FAIL+1)); }
+rm -rf "$cdx"
+rm -rf "$pdata2"
+
+echo "== host-neutral launcher =="
+lh="$(mktemp -d)"; mkdir -p "$lh/plugins/data/ensemble"
+cat > "$lh/plugins/data/ensemble/roster.json" <<'JSON'
+{"min_quorum":1,"reviewers_default":["sonnet@claude"],"endpoints":[
+ {"id":"sonnet@claude","adapter":"claude","model":"sonnet","family":"anthropic","effort":"medium","read_only_mode":"safe-mode+permission-mode-plan","role":"both","structured_output":"json","strengths":["architecture"],"latency_tier":"medium","enabled":true}
+]}
+JSON
+lout="$(CODEX_HOME="$lh" STUB_MODE=ok "$ROOT/scripts/ensemble" doctor 2>&1)"; lrc=$?
+check "launcher uses stable Codex data roster" 0 "$lrc" "sonnet@claude: ok" "$lout"
+check "launcher dispatches setup helpers" 0 0 "anthropic" "$(CODEX_HOME="$lh" "$ROOT/scripts/ensemble" setup family claude-sonnet)"
+CODEX_HOME="$lh" "$ROOT/scripts/ensemble" not-a-command >/dev/null 2>&1; lrc=$?
+check "launcher rejects unknown command -> 2" 2 "$lrc"
+rm -rf "$lh"
 
 echo "== setup surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
@@ -690,7 +799,10 @@ for f in ("skills/ensemble-setup/SKILL.md","commands/setup.md"):
     if not os.path.isfile(p): errs.append("missing "+f); continue
     t=open(p).read()
     if not (t.startswith("---") and t.count("---")>=2): errs.append("no frontmatter: "+f)
-    if "ens-setup.sh" not in t: errs.append(f+" does not reference ens-setup.sh")
+    if f.startswith("skills/") and ("scripts/ensemble" not in t or '"$ENSEMBLE" setup' not in t):
+        errs.append(f+" does not use the host-neutral setup launcher")
+    if f.startswith("commands/") and "ens-setup.sh" not in t:
+        errs.append(f+" does not reference ens-setup.sh")
 if not os.access(os.path.join(root,"scripts/ens-setup.sh"), os.X_OK): errs.append("ens-setup.sh not executable")
 try: json.load(open(os.path.join(root,"data/model-defaults.json")))
 except Exception as e: errs.append("model-defaults.json invalid: %s"%e)
@@ -703,13 +815,14 @@ echo "== gating hooks (§8) =="
 # SessionStart: emits the 3-gate policy + configured reviewers; honors the toggle
 ss="$(echo '{"source":"startup"}' | ENSEMBLE_ROSTER="$ROOT/roster.json" bash "$ROOT/hooks/session-start.sh")"
 check "session-start emits additionalContext" 0 0 '"hookEventName": "SessionStart"' "$ss"
-check "session-start mentions /ensemble:review" 0 0 '/ensemble:review' "$ss"
+check "session-start names host-neutral review workflow" 0 0 'Ensemble review workflow' "$ss"
+check "session-start includes Codex skill alias" 0 0 '$ensemble:multi-model-review' "$ss"
 check "session-start lists a configured reviewer" 0 0 'gpt-5.5@codex' "$ss"
 ssoff="$(echo '{}' | ENSEMBLE_GATE_REMINDERS=0 bash "$ROOT/hooks/session-start.sh")"
 check "session-start toggled off -> silent" 0 0 "0" "${#ssoff}"
 # PostToolUse: nudges only on spec/plan/design paths
 pw_spec="$(echo '{"tool_name":"Write","tool_input":{"file_path":"/r/docs/specs/x-design.md"}}' | bash "$ROOT/hooks/post-write.sh")"
-check "post-write nudges on a spec path" 0 0 '/ensemble:review' "$pw_spec"
+check "post-write nudges on a spec path" 0 0 'Ensemble review workflow' "$pw_spec"
 pw_plan="$(echo '{"tool_input":{"file_path":"/r/notes/feature-plan.md"}}' | bash "$ROOT/hooks/post-write.sh")"
 check "post-write nudges on a *plan*.md basename" 0 0 'hookEventName' "$pw_plan"
 pw_code="$(echo '{"tool_input":{"file_path":"/r/src/main.py"}}' | bash "$ROOT/hooks/post-write.sh")"
@@ -730,6 +843,9 @@ check "post-write toggle is case-insensitive (OFF)" 0 0 "0" "${#pw_OFF}"
 # large payload (full file body in the JSON) must not break the env/arg limit -> still nudges
 pw_big="$(python3 -c 'import json; print(json.dumps({"tool_input":{"file_path":"docs/specs/big-design.md","content":"x"*400000}}))' | bash "$ROOT/hooks/post-write.sh")"
 check "post-write handles a large payload (temp-file, not env)" 0 0 'hookEventName' "$pw_big"
+# Codex apply_patch reports the patch in tool_input.command instead of file_path.
+pw_codex="$(python3 -c 'import json; print(json.dumps({"tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n*** Update File: docs/specs/codex-design.md\n@@\n-old\n+new\n*** End Patch"}}))' | bash "$ROOT/hooks/post-write.sh")"
+check "post-write nudges on Codex apply_patch payload" 0 0 'codex-design.md' "$pw_codex"
 
 echo "== hooks surface contract =="
 python3 - "$ROOT" <<'PY'; rc=$?
@@ -812,6 +928,17 @@ try:
     if p.get("name") != "ensemble": errs.append("plugin.json name != ensemble")
 except Exception as e: errs.append("plugin.json: %s" % e)
 try:
+    cp = json.load(open(os.path.join(root, ".codex-plugin/plugin.json")))
+    for k in ("name","version","description","author","skills","interface"):
+        if not cp.get(k): errs.append("Codex plugin.json missing "+k)
+    if cp.get("name") != "ensemble": errs.append("Codex plugin.json name != ensemble")
+    if cp.get("skills") != "./skills/": errs.append("Codex plugin skills path must be ./skills/")
+    if "hooks" in cp: errs.append("Codex manifest should use default hook discovery, not a hooks field")
+    interface = cp.get("interface") or {}
+    for k in ("displayName","shortDescription","longDescription","developerName","category","capabilities"):
+        if not interface.get(k): errs.append("Codex plugin interface missing "+k)
+except Exception as e: errs.append("Codex plugin.json: %s" % e)
+try:
     m = json.load(open(os.path.join(root, ".claude-plugin/marketplace.json")))
     pl = m.get("plugins") or []
     ent = next((x for x in pl if isinstance(x, dict) and x.get("name") == "ensemble"), None)
@@ -830,6 +957,10 @@ for cmd in ("review","delegate","calibrate","setup","doctor"):
     body = open(cf, encoding="utf-8").read()
     if ("skill" not in body.lower()) and ("scripts/" not in body):
         errs.append("commands/%s.md references neither a skill nor a script" % cmd)
+if not os.path.exists(os.path.join(root,"skills","ensemble-doctor","SKILL.md")):
+    errs.append("missing Codex doctor skill")
+if not os.access(os.path.join(root,"scripts","ensemble"), os.X_OK):
+    errs.append("host-neutral launcher is not executable")
 # any /ensemble:<cmd> referenced in skills/commands must have a command file
 import re
 referenced = set()
@@ -854,5 +985,11 @@ for s in multi-model-review delegate-implementation ensemble-calibrate; do
 done
 
 source "$HERE/calib-tests.sh"
+
+echo "== suite leaves no residue in this checkout =="
+WT_AFTER="$(git -C "$ROOT" worktree list | wc -l | tr -d ' ')"
+BR_AFTER="$(git -C "$ROOT" branch --list 'ensemble/*' | wc -l | tr -d ' ')"
+check "no worktree leaked into the ensemble checkout" "$WT_BEFORE" "$WT_AFTER"
+check "no delegate branch leaked into the ensemble checkout" "$BR_BEFORE" "$BR_AFTER"
 
 echo ""; echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]

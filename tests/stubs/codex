@@ -3,15 +3,28 @@
 sub="${1:-}"
 case "$sub" in
   exec)
+    # CODEX_HOME is intentionally absent from this list (the claude stub does assert
+    # it): the codex adapter keeps it so the nested CLI can still find its credentials.
+    for _v in CLAUDECODE CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA ENSEMBLE_PLUGIN_ROOT ENSEMBLE_DATA_DIR ENSEMBLE_ROSTER PLUGIN_ROOT PLUGIN_DATA; do
+      eval '_value=${'"$_v"':-}'
+      [ -z "$_value" ] || { echo "STUB ERROR: $_v leaked into nested codex" >&2; exit 90; }
+    done
     # parse -o OUTFILE (review) and -C DIR (run working root)
     _all_args=" $* "
+    _prompt="$*"
     out=""; cdir=""; _prev=""
-    for _a in "$@"; do case "$_prev" in -o) out="$_a" ;; -C|--cd) cdir="$_a" ;; esac; _prev="$_a"; done
+    for _a in "$@"; do
+      case "$_prev" in -o) out="$_a" ;; -C|--cd) cdir="$_a" ;; esac
+      [ "$_a" = "-" ] && _prompt="$(cat)"
+      _prev="$_a"
+    done
     case "$_all_args" in
       *" --sandbox read-only "*) _mode=review ;;
       *" --sandbox workspace-write "*) _mode=run ;;
       *) echo "STUB ERROR: codex must pass --sandbox read-only (review) or workspace-write (run)" >&2; exit 90 ;;
     esac
+    case "$_all_args" in *" --ignore-user-config "*) : ;; *) echo "STUB ERROR: nested codex must ignore user config" >&2; exit 90 ;; esac
+    case "$_prompt" in *"Do not invoke Ensemble"*) : ;; *) echo "STUB ERROR: nested codex prompt lacks recursion guard" >&2; exit 90 ;; esac
     if [ "$_mode" = run ]; then
       # executor / write mode: write a file in -C DIR, emit a ===DIGEST=== to stdout
       case "${STUB_MODE:-ok}" in
