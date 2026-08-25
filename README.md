@@ -128,6 +128,14 @@ The roster is written to the host's persistent plugin data directory, which surv
 plugin updates. Set `ENSEMBLE_DATA_DIR` or `ENSEMBLE_ROSTER` to override it. A shipped
 default lets the plugin run before you have set anything up.
 
+Every endpoint carries an `enabled` flag, so you can take one out of the panel without
+losing its configuration: set `"enabled": false` in the roster, or deselect it the next
+time you run setup. That is worth knowing for `sonnet@claude`, which ships enabled. When
+Codex hosts the plugin it is a genuinely independent family; when Claude Code hosts it,
+that reviewer is the same family as the conductor, so it contributes another opinion
+rather than an independent one. Quorum counts families, so it is never double-counted
+either way — disable it if you would rather not spend the call.
+
 ## Commands
 
 | Workflow | Claude Code | Codex |

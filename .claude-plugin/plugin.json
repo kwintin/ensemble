@@ -1,6 +1,6 @@
 {
   "name": "ensemble",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Multi-model review + strength-routed delegation across heterogeneous AI CLIs. The host agent conducts an ensemble of independent model endpoints (codex, claude, agy, grok, opencode, kilo, vibe) for consensus review, council mode, delegated implementation, and calibration.",
   "author": {
     "name": "Quentin Millpass",
