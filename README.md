@@ -146,9 +146,36 @@ either way — disable it if you would rather not spend the call.
 | Setup | `/ensemble:setup` | `$ensemble:ensemble-setup` |
 | Doctor | `/ensemble:doctor` | `$ensemble:ensemble-doctor` |
 
-Review accepts `--council`, `--reviewers a,b,c`, and an optional scope. The other
-workflows preserve the same setup, delegation, calibration, and health-check behavior
-on both hosts.
+Review accepts `--council`, `--reviewers a,b,c`, `--keep-work`, and an optional scope.
+The other workflows preserve the same setup, delegation, calibration, and health-check
+behavior on both hosts.
+
+## Tuning and recovery
+
+The engines carry two free-text fields into the conductor's context: a reviewer's prose
+and a failed executor's stderr. Both are capped so a fan-out of reviewers cannot flood
+that context — but a cap that trims silently is worse than a large one, because a
+sentinel reviewer's prose *is* its review (its `findings[]` is empty by construction),
+so a quiet trim reads as findings that were never made.
+
+| Knob | Default | Effect |
+|------|---------|--------|
+| `ENSEMBLE_REVIEW_CAP` | `20000` | Characters of reviewer prose kept in `reviewers[].review`. `0` = uncapped. |
+| `ENSEMBLE_STDERR_CAP` | `2000` | Characters of executor stderr kept in a delegate result. `0` = uncapped. |
+| `ENSEMBLE_PROVENANCE` | on | Set to `0` to silence the `▶`/`◀` dispatch lines. |
+| `--keep-work` | off | On `review` and `council`: keep the run's work directory and print its path to stderr. |
+
+Neither cap is ever applied silently. When one bites, the record gains
+`review_truncated` / `review_chars` (or `stderr_truncated` / `stderr_chars`) alongside
+the trimmed text, and review warns on stderr naming the endpoint and both lengths. A
+malformed value falls back to the default with a warning rather than producing a
+nonsense slice.
+
+`--keep-work` is the recovery path: the untrimmed reviewer text lives in the run's work
+directory as `<endpoint>.out`, which is otherwise deleted when the run exits. Council
+propagates the flag to both of its rounds, so the round-1 prose behind an anonymized
+peer block is recoverable too. The disposable review worktree is still torn down either
+way, since it is registered with your repo and leaving it behind would dirty real state.
 
 ## Safety model
 

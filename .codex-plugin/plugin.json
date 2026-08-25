@@ -1,6 +1,6 @@
 {
   "name": "ensemble",
-  "version": "0.2.0+codex.20260825031832",
+  "version": "0.2.1+codex.20260825033645",
   "description": "Multi-model consensus review, council review, strength-routed delegation, calibration, and endpoint health checks for Codex.",
   "author": {
     "name": "Quentin Millpass",
