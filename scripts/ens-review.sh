@@ -39,7 +39,7 @@ die() { echo "ens-review: $*" >&2; exit 1; }
 # during setup (core.hooksPath=/dev/null) so a hostile hook cannot run either.
 # ----------------------------------------------------------------------------
 
-PROMPT_FILE=""; SUBSET=""; STDIN_TMP=""
+PROMPT_FILE=""; SUBSET=""; STDIN_TMP=""; KEEP_WORK=0
 WORK=""; WT=""; MAIN_REPO=""; RO_GUARDED=0; WIP_REPLAYED="none"; RO_BASELINE=""
 PIDS=(); _cleaned=0
 
@@ -50,7 +50,17 @@ cleanup() {
   for _p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$_p" 2>/dev/null; done
   # remove the disposable worktree (idempotent; safe on a second trap fire)
   [ -n "$WT" ] && [ -n "$MAIN_REPO" ] && git -C "$MAIN_REPO" worktree remove --force "$WT" >/dev/null 2>&1
-  [ -n "$WORK" ] && rm -rf "$WORK"
+  # --keep-work: retain the per-endpoint outputs. $WORK/<endpoint>.out holds the raw,
+  # UNCAPPED reviewer text, so a full review stays recoverable even when the prose cap
+  # bit. The review worktree is dropped either way -- it is a linked worktree registered
+  # with the user's repo, and leaving one on disk keeps that registration alive past
+  # `worktree prune`, i.e. dirties real repo state to preserve a copy nobody asked for.
+  if [ "$KEEP_WORK" = 1 ] && [ -n "$WORK" ] && [ -d "$WORK" ]; then
+    [ -n "$WT" ] && rm -rf "$WT"
+    echo "ens-review: --keep-work: work dir retained at $WORK (per-reviewer .out files hold the untruncated review text; the review worktree was removed)" >&2
+  else
+    [ -n "$WORK" ] && rm -rf "$WORK"
+  fi
   # prune AFTER the worktree dir is gone so a partial registration from a failed
   # `worktree add` (WT may be "") is also reaped, not just a clean removal
   [ -n "$MAIN_REPO" ] && git -C "$MAIN_REPO" worktree prune >/dev/null 2>&1 || true
@@ -68,6 +78,7 @@ while [ $# -gt 0 ]; do
     --reviewers) SUBSET="$2"; shift 2 ;;
     --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
     --op) PROV_OP="$2"; shift 2 ;;
+    --keep-work) KEEP_WORK=1; shift ;;
     -) PROMPT_FILE="$(mktemp)"; cat > "$PROMPT_FILE"; STDIN_TMP="$PROMPT_FILE"; shift ;;
     *) die "unknown arg '$1'" ;;
   esac
@@ -232,7 +243,8 @@ for ep in eps:
             if cap and len(_raw)>cap:
                 rec["review"]=_raw[:cap]; rec["review_truncated"]=True
                 sys.stderr.write("ens-review: warning: %s review prose truncated to %d of %d chars "
-                                 "(raise ENSEMBLE_REVIEW_CAP, or set it to 0 for uncapped)\n"
+                                 "(raise ENSEMBLE_REVIEW_CAP, set it to 0 for uncapped, or pass "
+                                 "--keep-work to retain the full text on disk)\n"
                                  % (ep,cap,len(_raw)))
             else:
                 rec["review"]=_raw

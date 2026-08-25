@@ -19,11 +19,18 @@ die() { echo "ens-council: $*" >&2; exit 1; }
 # Exit: 0 ok · 4 cannot convene / below quorum · 5 read-only violation.
 # ----------------------------------------------------------------------------
 
-PROMPT_FILE=""; SUBSET=""; STDIN_TMP=""; WORK=""; _cleaned=0
+PROMPT_FILE=""; SUBSET=""; STDIN_TMP=""; WORK=""; KEEP_WORK=0; _cleaned=0
 cleanup() {
   [ "$_cleaned" = 1 ] && return 0
   _cleaned=1
-  [ -n "$WORK" ] && rm -rf "$WORK"
+  # --keep-work: retain r1.json, r2.json, the anonymized peer block and the peer prompt.
+  # It is also propagated to BOTH ens-review rounds, so their per-reviewer outputs (the
+  # untruncated prose) survive too; each round prints its own retained path.
+  if [ "$KEEP_WORK" = 1 ] && [ -n "$WORK" ] && [ -d "$WORK" ]; then
+    echo "ens-council: --keep-work: work dir retained at $WORK (r1.json, r2.json, peer.txt, peerprompt.txt)" >&2
+  else
+    [ -n "$WORK" ] && rm -rf "$WORK"
+  fi
   [ -n "$STDIN_TMP" ] && rm -f "$STDIN_TMP"
   return 0
 }
@@ -38,6 +45,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --reviewers) SUBSET="$2"; shift 2 ;;
     --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
+    --keep-work) KEEP_WORK=1; shift ;;
     -) PROMPT_FILE="$(mktemp)"; cat > "$PROMPT_FILE"; STDIN_TMP="$PROMPT_FILE"; shift ;;
     *) die "unknown arg '$1'" ;;
   esac
@@ -48,6 +56,8 @@ PROMPT_FILE="$_d/$(basename "$PROMPT_FILE")"
 
 REV_ARGS=()
 [ -n "$SUBSET" ] && REV_ARGS=(--reviewers "$SUBSET")
+# propagated to both rounds so the untruncated round-1 and round-2 prose is recoverable
+KEEP_ARGS=(); [ "$KEEP_WORK" = 1 ] && KEEP_ARGS=(--keep-work)
 
 # council wrapper with round2:null (round 1 only) — robust to malformed round-1 JSON
 emit_partial() { # R1FILE NOTE
@@ -63,7 +73,7 @@ PY
 
 # ---- ROUND 1 ----
 R1="$WORK/r1.json"
-"$SCRIPTS/ens-review.sh" --op round-1 ${REV_ARGS[@]+"${REV_ARGS[@]}"} --prompt-file "$PROMPT_FILE" > "$R1"; r1rc=$?
+"$SCRIPTS/ens-review.sh" --op round-1 ${REV_ARGS[@]+"${REV_ARGS[@]}"} ${KEEP_ARGS[@]+"${KEEP_ARGS[@]}"} --prompt-file "$PROMPT_FILE" > "$R1"; r1rc=$?
 if [ "$r1rc" -eq 5 ]; then emit_partial "$R1" "read-only violation in round 1; council not convened"; exit 5; fi
 if [ "$r1rc" -ne 0 ] && [ "$r1rc" -ne 4 ]; then cat "$R1" 2>/dev/null; exit "$r1rc"; fi
 
@@ -144,7 +154,7 @@ PEERPROMPT="$WORK/peerprompt.txt"
 
 # ---- ROUND 2 (peer round): the same round-1 OK reviewers ----
 R2="$WORK/r2.json"
-"$SCRIPTS/ens-review.sh" --op peer --reviewers "$(cat "$OKEPS")" --prompt-file "$PEERPROMPT" > "$R2"; r2rc=$?
+"$SCRIPTS/ens-review.sh" --op peer --reviewers "$(cat "$OKEPS")" ${KEEP_ARGS[@]+"${KEEP_ARGS[@]}"} --prompt-file "$PEERPROMPT" > "$R2"; r2rc=$?
 # unexpected (non-contract) exit -> propagate raw rather than mis-emit
 if [ "$r2rc" -ne 0 ] && [ "$r2rc" -ne 4 ] && [ "$r2rc" -ne 5 ]; then cat "$R2" 2>/dev/null; exit "$r2rc"; fi
 

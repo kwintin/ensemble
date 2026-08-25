@@ -592,6 +592,49 @@ check "json reviewer ◀ still reports a findings count" 0 0 "findings)" "$JOUT"
 JJSON="$(printf hi | ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex - 2>/dev/null)"
 check "json reviewer record carries output_mode json" 0 0 '"output_mode": "json"' "$JJSON"
 
+echo "== --keep-work (retain a run's work dir) =="
+# The untruncated prose only ever exists as $WORK/<endpoint>.out during a run, and the
+# EXIT trap used to delete it unconditionally — so a capped review was unrecoverable.
+kwd="$(mktemp -d)"; ( cd "$kwd" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RS" "$kwd/roster.json"
+kwerr="$(mktemp)"
+( cd "$kwd" && printf 'review this' | env ENSEMBLE_ROSTER="$kwd/roster.json" \
+    ENS_TEST_MODES='a@grok=long,b@grok=long' ENSEMBLE_REVIEW_CAP=500 \
+    bash "$ROOT/scripts/ens-review.sh" --keep-work --reviewers a@grok,b@grok - >/dev/null 2>"$kwerr" )
+KWDIR="$(sed -n 's/^ens-review: --keep-work: work dir retained at \([^ ]*\).*/\1/p' "$kwerr" | head -1)"
+KWPARENT="$(dirname "${KWDIR:-/nonexistent/x}")"
+check "--keep-work prints a retained path that exists" 0 0 "1" "$([ -n "$KWDIR" ] && [ -d "$KWDIR" ] && echo 1 || echo 0)"
+check "--keep-work keeps the per-reviewer output" 0 0 "1" "$([ -f "$KWDIR/a@grok.out" ] && echo 1 || echo 0)"
+# the JSON was capped at 500 chars; the retained file must still hold the whole review
+check "retained .out holds the untruncated review" 0 0 "PAD_LAST" "$(cat "$KWDIR/a@grok.out" 2>/dev/null)"
+check "--keep-work still drops the review worktree" 0 0 "1" "$([ ! -d "$KWDIR/wt" ] && echo 1 || echo 0)"
+check "--keep-work leaks no worktree into the repo under review" 0 0 "1" "$([ "$(git -C "$kwd" worktree list | wc -l | tr -d ' ')" = "1" ] && echo 1 || echo 0)"
+rm -rf "$KWDIR"; rm -f "$kwerr"
+# default (no flag) still tears the work dir down — look for our own artifact signature
+( cd "$kwd" && printf 'review this' | env ENSEMBLE_ROSTER="$kwd/roster.json" ENS_TEST_MODES='a@grok=long,b@grok=long' \
+    bash "$ROOT/scripts/ens-review.sh" --reviewers a@grok,b@grok - >/dev/null 2>&1 )
+kwleak=0
+if [ -d "$KWPARENT" ]; then for d in "$KWPARENT"/*/; do [ -e "$d/a@grok.out" ] && kwleak=1; done 2>/dev/null; fi
+check "default run removes its work dir" 0 "$kwleak"
+# council: its own work dir, and the flag propagates to BOTH ens-review rounds
+ckerr="$(mktemp)"
+( cd "$kwd" && printf 'review this' | env ENSEMBLE_ROSTER="$kwd/roster.json" ENS_TEST_MODES='a@grok=long,b@grok=long' \
+    bash "$ROOT/scripts/ens-council.sh" --keep-work --reviewers a@grok,b@grok - >/dev/null 2>"$ckerr" )
+CKDIR="$(sed -n 's/^ens-council: --keep-work: work dir retained at \([^ ]*\).*/\1/p' "$ckerr" | head -1)"
+check "council --keep-work retains its work dir" 0 0 "1" "$([ -n "$CKDIR" ] && [ -d "$CKDIR" ] && echo 1 || echo 0)"
+check "council --keep-work keeps the peer prompt" 0 0 "1" "$([ -f "$CKDIR/peerprompt.txt" ] && echo 1 || echo 0)"
+check "council --keep-work keeps both rounds" 0 0 "1" "$([ -f "$CKDIR/r1.json" ] && [ -f "$CKDIR/r2.json" ] && echo 1 || echo 0)"
+check "council --keep-work propagates to both rounds" 0 0 "2" "$(grep -c '^ens-review: --keep-work' "$ckerr" | tr -d ' ')"
+for d in $(sed -n 's/^ens-review: --keep-work: work dir retained at \([^ ]*\).*/\1/p' "$ckerr"); do rm -rf "$d"; done
+rm -rf "$CKDIR"; rm -f "$ckerr"
+# council default still cleans up
+( cd "$kwd" && printf 'review this' | env ENSEMBLE_ROSTER="$kwd/roster.json" ENS_TEST_MODES='a@grok=long,b@grok=long' \
+    bash "$ROOT/scripts/ens-council.sh" --reviewers a@grok,b@grok - >/dev/null 2>&1 )
+ckleak=0
+if [ -d "$KWPARENT" ]; then for d in "$KWPARENT"/*/; do [ -e "$d/peerprompt.txt" ] && ckleak=1; done 2>/dev/null; fi
+check "council default run removes its work dir" 0 "$ckleak"
+rm -rf "$kwd"
+
 echo "== ens-council (two-round de-biased review) =="
 cot="$(mktemp -d)"; ( cd "$cot" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
 cp "$RM" "$cot/roster.json"
