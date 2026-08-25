@@ -808,6 +808,39 @@ rc=0; ( cd "$pg" && bash "$ROOT/scripts/ens-delegate.sh" merge --worktree "$pg/f
 check "merge refuses a non-delegate worktree -> exit 1" 1 "$rc"
 ( cd "$pg" && git worktree remove --force "$pg/feat" 2>/dev/null ); rm -rf "$pg"
 
+echo "== ens-delegate stderr cap (ENSEMBLE_STDERR_CAP) =="
+# Same silent-loss shape as the review-prose cap: a hardcoded [:2000] slice on the
+# executor diagnostic with no signal that anything was dropped.
+dse="$(mktemp -d)"; ( cd "$dse" && git init -q && printf 'base\n' > base.txt && git add base.txt && git -c user.email=t@t -c user.name=t commit -q -m init )
+cp "$RM" "$dse/roster.json"; pfe="$(mktemp)"; echo task > "$pfe"
+dg_stderr() { # [CAP] [ERRFILE] -> result JSON on stdout (executor fails -> stderr populated)
+  local cap="${1:-}" ef="${2:-/dev/null}"
+  ( cd "$dse" && env STUB_MODE=quota ENSEMBLE_ROSTER="$dse/roster.json" ${cap:+ENSEMBLE_STDERR_CAP="$cap"} \
+      bash "$ROOT/scripts/ens-delegate.sh" run --endpoint x@codex --prompt-file "$pfe" 2>"$ef" )
+}
+dg_f() { python3 -c 'import sys,json;print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
+o="$(dg_stderr)"
+check "delegate result reports stderr_chars" 0 0 "1" "$(printf '%s' "$o" | python3 -c 'import sys,json;print(1 if json.load(sys.stdin)["stderr_chars"]>0 else 0)')"
+check "untruncated stderr flagged false" 0 0 "False" "$(printf '%s' "$o" | dg_f stderr_truncated)"
+o="$(dg_stderr 10)"
+check "configured stderr cap honoured" 0 0 "10" "$(printf '%s' "$o" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)["stderr"]))')"
+check "stderr truncation flagged" 0 0 "True" "$(printf '%s' "$o" | dg_f stderr_truncated)"
+check "stderr_chars keeps the original length" 0 0 "1" "$(printf '%s' "$o" | python3 -c 'import sys,json;print(1 if json.load(sys.stdin)["stderr_chars"]>10 else 0)')"
+o="$(dg_stderr 0)"
+check "ENSEMBLE_STDERR_CAP=0 is uncapped" 0 0 "False" "$(printf '%s' "$o" | dg_f stderr_truncated)"
+derr="$(mktemp)"; o="$(dg_stderr abc "$derr")"
+check "invalid ENSEMBLE_STDERR_CAP warns" 0 0 "ignoring invalid ENSEMBLE_STDERR_CAP=abc" "$(cat "$derr")"
+check "invalid ENSEMBLE_STDERR_CAP falls back to the default (no truncation here)" 0 0 "False" "$(printf '%s' "$o" | dg_f stderr_truncated)"
+rm -f "$derr"
+# a successful run still reports an empty, untruncated stderr
+o="$(cd "$dse" && env STUB_MODE=ok ENSEMBLE_ROSTER="$dse/roster.json" bash "$ROOT/scripts/ens-delegate.sh" run --endpoint x@codex --prompt-file "$pfe" 2>/dev/null)"
+check "successful run reports stderr_chars 0" 0 0 "0" "$(printf '%s' "$o" | dg_f stderr_chars)"
+# these runs deliberately LEAVE their worktrees for clean-state verify — tear them down
+( cd "$dse" && git worktree list --porcelain | awk '/^worktree /{print $2}' | tail -n +2 | while read -r w; do
+    git worktree remove --force "$w" >/dev/null 2>&1; rm -rf "$w"
+  done )
+rm -rf "$dse"; rm -f "$pfe"
+
 echo "== ens-delegate provenance =="
 # These are real dispatches: each one creates a git worktree in the repo it is run
 # from. Run them inside a disposable repo (and tear the worktrees down afterwards),

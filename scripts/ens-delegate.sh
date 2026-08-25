@@ -6,6 +6,7 @@ source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAU
 source "$SCRIPTS/lib/roster.sh"
 source "$SCRIPTS/lib/provenance.sh"
 source "$SCRIPTS/lib/ephemeral-ignore.sh"   # ens_write_ephemeral_ignore (shared denylist)
+source "$SCRIPTS/lib/cap.sh"
 die() { echo "ens-delegate: $*" >&2; exit 1; }
 
 # ----------------------------------------------------------------------------
@@ -102,6 +103,12 @@ if [ "$sub" = "run" ]; then
   git -C "$MAIN_REPO" worktree add --quiet -b "$BR" "$WT" -- "$BASE" 2>"$WORK/wterr" \
     || { cat "$WORK/wterr" >&2; die "could not create delegate worktree (base '$BASE')"; }
 
+  # Cap (in characters) on the executor stderr carried in the result JSON. Same reasoning
+  # as the review-prose cap: bounded so a runaway executor cannot flood the caller's
+  # context, but overridable (ENSEMBLE_STDERR_CAP, 0 = uncapped) and reported when it
+  # bites (stderr_truncated / stderr_chars) rather than quietly eating a diagnostic.
+  STDERR_CAP="$(ens_cap ENSEMBLE_STDERR_CAP 2000 ens-delegate)"
+
   DIGEST="$WORK/digest.txt"
   { read -r DG_CLI; read -r DG_MODEL; read -r DG_FAMILY; } < <(ens_endpoint_fields "$ENDPOINT" "$ROSTER" adapter model family)
   ens_provenance delegate "$ENDPOINT" "$ROSTER" "${REASON}"
@@ -117,7 +124,7 @@ if [ "$sub" = "run" ]; then
 
   # emit a structured result; the worktree is LEFT in place for clean-state verify
   ENS_CLI="$DG_CLI" ENS_MODEL="$DG_MODEL" ENS_FAMILY="$DG_FAMILY" ENS_ENDPOINT="$ENDPOINT" \
-  ENS_RC="$rc" python3 - "$WT" "$BR" "$DIGEST" "$WORK/err" "$ENDPOINT" "$DG_IGNORE" <<'PY'
+  ENS_RC="$rc" ENS_STDERR_CAP="$STDERR_CAP" python3 - "$WT" "$BR" "$DIGEST" "$WORK/err" "$ENDPOINT" "$DG_IGNORE" <<'PY'
 import json,os,sys,subprocess
 wt,br,digestf,errf,ep,ignore=sys.argv[1:7]; rc=int(os.environ.get("ENS_RC","1"))
 EX=["-c","core.excludesFile="+ignore]   # keep ephemeral artifacts out of status/diff/index
@@ -133,11 +140,20 @@ def read(p):
 # so they never become intent-to-add and the merge can keep them out of the commit.
 sh("git","-C",wt,*EX,"add","-A","-N")
 REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing"}
+# bash already validated the cap (lib/cap.sh); re-validate so a hand-set env var can
+# never produce a nonsense slice. 0 = uncapped. stderr_chars is the ORIGINAL length, so
+# a caller can always tell it is reading a partial diagnostic.
+_scap=os.environ.get("ENS_STDERR_CAP","2000")
+scap=int(_scap) if _scap.isdigit() else 2000
+err=read(errf) if rc else ""
+err_trunc=bool(scap and len(err)>scap)
 res={"endpoint":os.environ.get("ENS_ENDPOINT") or ep,"status":"ok" if rc==0 else "failed",
     "signal":(REASON.get(rc,"failed") if rc else None),
     "worktree":wt,"branch":br,"files_changed":files,
     "diff_stat":sh("git","-C",wt,*EX,"diff","--stat").strip(),
-    "digest":read(digestf),"stderr":(read(errf)[:2000] if rc else "")}
+    "digest":read(digestf),
+    "stderr":(err[:scap] if err_trunc else err),
+    "stderr_truncated":err_trunc,"stderr_chars":len(err)}
 res["cli"]=os.environ.get("ENS_CLI") or None
 res["model"]=os.environ.get("ENS_MODEL") or None
 res["family"]=os.environ.get("ENS_FAMILY") or None
