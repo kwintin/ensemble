@@ -136,6 +136,44 @@ that reviewer is the same family as the conductor, so it contributes another opi
 rather than an independent one. Quorum counts families, so it is never double-counted
 either way — disable it if you would rather not spend the call.
 
+## Updating
+
+Two steps on either host: refresh the marketplace snapshot, then update the plugin from
+it. Updating the plugin alone will not see a new release.
+
+### Claude Code
+
+```bash
+claude plugin marketplace update ensemble-for-claude-code
+claude plugin update ensemble@ensemble-for-claude-code
+```
+
+Then restart — the update applies to a new session, not the running one. The in-session
+`/plugin marketplace update` and `/plugin update` forms do the same thing.
+
+### Codex
+
+`marketplace upgrade` refreshes Git marketplace snapshots:
+
+```bash
+codex plugin marketplace upgrade ensemble-for-claude-code
+codex plugin add ensemble@ensemble-for-claude-code
+```
+
+Then start a new thread so the skills reload. If you registered the marketplace from a
+local path, as in the development install above, it is not a Git snapshot: `git pull` in
+the checkout and re-run `codex plugin add`.
+
+### What an update touches
+
+- **Your roster survives.** It lives in the host's plugin data directory, not the plugin
+  installation, so an update never costs you a `setup` or a `calibrate` run.
+- **Hooks need re-approving only when they change.** Codex keeps the optional
+  SessionStart/PostToolUse reminders disabled until you trust the current hook hash; a
+  release that does not touch `hooks/` leaves your existing approval valid.
+- [CHANGELOG.md](CHANGELOG.md) records what each release changed, including any behaviour
+  change worth knowing before you take it.
+
 ## Commands
 
 | Workflow | Claude Code | Codex |
