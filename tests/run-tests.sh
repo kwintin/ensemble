@@ -571,6 +571,27 @@ for bad in abc -5 3.5; do
 done
 rm -rf "$capd"
 
+echo "== ens-review outcome honesty (sentinel vs json) =="
+# A sentinel reviewer's findings[] is empty by construction, so "(0 findings)" read as
+# "found nothing" for a reviewer that had written pages of prose. Each mode must report
+# what it actually produced.
+ohd="$(mktemp -d)"; ( cd "$ohd" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RS" "$ohd/roster.json"
+OHERR="$(cd "$ohd" && printf 'review this' | env ENSEMBLE_ROSTER="$ohd/roster.json" ENS_TEST_MODES='a@grok=long,b@grok=long' \
+    bash "$ROOT/scripts/ens-review.sh" --reviewers a@grok,b@grok - 2>&1 1>/dev/null)"
+check "sentinel ◀ reports prose length" 0 0 "◀ review a@grok → CHANGES (10" "$OHERR"
+check "sentinel ◀ says 'chars prose'" 0 0 "chars prose)" "$OHERR"
+check "sentinel ◀ no longer claims 0 findings" 0 "$(printf '%s' "$OHERR" | grep -q '(0 findings)' && echo 1 || echo 0)"
+OHJSON="$(cd "$ohd" && printf 'review this' | env ENSEMBLE_ROSTER="$ohd/roster.json" ENS_TEST_MODES='a@grok=long,b@grok=long' \
+    bash "$ROOT/scripts/ens-review.sh" --reviewers a@grok,b@grok - 2>/dev/null)"
+check "reviewer record carries output_mode" 0 0 '"output_mode": "sentinel"' "$OHJSON"
+rm -rf "$ohd"
+# a json reviewer still reports a real findings count (roster-multi is all structured_output=json)
+JOUT="$(printf hi | ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex - 2>&1 1>/dev/null)"
+check "json reviewer ◀ still reports a findings count" 0 0 "findings)" "$JOUT"
+JJSON="$(printf hi | ENSEMBLE_ROSTER="$RM" bash "$ROOT/scripts/ens-review.sh" --reviewers a@codex - 2>/dev/null)"
+check "json reviewer record carries output_mode json" 0 0 '"output_mode": "json"' "$JJSON"
+
 echo "== ens-council (two-round de-biased review) =="
 cot="$(mktemp -d)"; ( cd "$cot" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
 cp "$RM" "$cot/roster.json"

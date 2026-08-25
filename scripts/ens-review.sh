@@ -202,6 +202,7 @@ except Exception:
 fam={e["id"]:e.get("family") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
 adp={e["id"]:e.get("adapter") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
 mdl={e["id"]:e.get("model")   for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
+sof={e["id"]:e.get("structured_output") for e in (rd.get("endpoints") or []) if isinstance(e,dict) and e.get("id")}
 SKIP={"quota","auth","timeout","missing","empty","isolation-failed"}
 REASON={2:"failed",3:"empty",10:"quota",11:"auth",12:"timeout",13:"missing",125:"isolation-failed"}
 _ok=re.compile(r'^[A-Za-z0-9._@-]+$')
@@ -214,6 +215,7 @@ for ep in eps:
     p=os.path.join(work,ep)
     rc=int(open(p+".rc").read().strip()) if os.path.exists(p+".rc") else 1
     rec={"endpoint":ep,"cli":adp.get(ep),"model":mdl.get(ep),"family":fam.get(ep),
+         "output_mode":sof.get(ep),
          "status":"ok","reason":None,"verdict":None,"findings":[],
          "review":"","review_truncated":False,"review_chars":0}
     if rc==0:
@@ -240,7 +242,14 @@ for ep in eps:
         rec["status"]="degraded"; rec["reason"]=REASON.get(rc,"failed")
     reviewers.append(rec)
     if rec["status"]=="ok":
-        _oc="%s (%d findings)" % (rec["verdict"], len(rec["findings"]))
+        # A sentinel reviewer's findings[] is EMPTY BY CONSTRUCTION — its detail lives in
+        # prose — so "(0 findings)" read as "this reviewer found nothing" for a reviewer
+        # that had just written twenty paragraphs of them. Report what each output mode
+        # actually produces; do NOT invent a count by parsing the prose.
+        if rec["output_mode"]=="sentinel":
+            _oc="%s (%d chars prose)" % (rec["verdict"], rec["review_chars"])
+        else:
+            _oc="%s (%d findings)" % (rec["verdict"], len(rec["findings"]))
     else:
         _oc=("skip:%s" if rec["reason"] in SKIP else "error:%s") % rec["reason"]
     _outcomes.write("%s\t%s\n" % (ep,_oc))
