@@ -1,0 +1,7 @@
+{
+  "min_quorum": 2,
+  "endpoints": [
+    {"id":"a@grok","adapter":"grok","model":"grok-build","family":"xai","effort":"low","role":"reviewer","read_only_mode":"permission-mode-plan","structured_output":"sentinel","enabled":true},
+    {"id":"b@grok","adapter":"grok","model":"grok-build","family":"deepseek","effort":"low","role":"reviewer","read_only_mode":"permission-mode-plan","structured_output":"sentinel","enabled":true}
+  ]
+}

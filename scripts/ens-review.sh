@@ -6,7 +6,16 @@ source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAU
 source "$SCRIPTS/lib/roster.sh"
 source "$SCRIPTS/lib/ephemeral-ignore.sh"   # ens_write_ephemeral_ignore (shared denylist)
 source "$SCRIPTS/lib/provenance.sh"
+source "$SCRIPTS/lib/cap.sh"
 PROV_OP="review"
+
+# Cap (in characters) on the per-reviewer prose carried in reviewers[].review.
+# A sentinel reviewer carries ALL of its substance there -- its findings[] is empty by
+# construction -- so the default is generous (20000: comfortably past the ~4-8k a
+# thorough prose review runs to, while still bounding what a fan-out of N reviewers
+# can push into the caller's context). ENSEMBLE_REVIEW_CAP overrides it; 0 = uncapped.
+# Truncation is never silent: see review_truncated / review_chars in the output.
+REVIEW_CAP="$(ens_cap ENSEMBLE_REVIEW_CAP 20000 ens-review)"
 
 die() { echo "ens-review: $*" >&2; exit 1; }
 
@@ -175,12 +184,16 @@ if [ "$RO_GUARDED" = 1 ]; then
   fi
 fi
 
-ENS_RO_V="$RO_VIOLATION" ENS_RO_G="$RO_GUARDED" ENS_WIP="$WIP_REPLAYED" \
+ENS_RO_V="$RO_VIOLATION" ENS_RO_G="$RO_GUARDED" ENS_WIP="$WIP_REPLAYED" ENS_REVIEW_CAP="$REVIEW_CAP" \
 python3 - "$WORK" "$ROSTER" "${REVIEWERS[@]}" <<'PY'
 import json,os,re,sys
 from collections import defaultdict
 work,roster=sys.argv[1],sys.argv[2]; eps=sys.argv[3:]
 ro_v=os.environ.get("ENS_RO_V","0"); ro_g=os.environ.get("ENS_RO_G","0"); wip=os.environ.get("ENS_WIP","none")
+# bash already validated this (lib/cap.sh); re-validate so a hand-set env var can never
+# produce a nonsense slice. 0 = uncapped.
+_cap=os.environ.get("ENS_REVIEW_CAP","20000")
+cap=int(_cap) if _cap.isdigit() else 20000
 try:
     rd=json.load(open(roster, encoding="utf-8"))
     if not isinstance(rd, dict): rd={}
@@ -201,14 +214,26 @@ for ep in eps:
     p=os.path.join(work,ep)
     rc=int(open(p+".rc").read().strip()) if os.path.exists(p+".rc") else 1
     rec={"endpoint":ep,"cli":adp.get(ep),"model":mdl.get(ep),"family":fam.get(ep),
-         "status":"ok","reason":None,"verdict":None,"findings":[],"review":""}
+         "status":"ok","reason":None,"verdict":None,"findings":[],
+         "review":"","review_truncated":False,"review_chars":0}
     if rc==0:
         try:
             v=json.load(open(p+".out", encoding="utf-8"))
             rec["verdict"]=v.get("verdict"); rec["findings"]=v.get("findings") or []
-            # surface the raw review prose (capped) so sentinel reviewers — which
-            # carry detail in text, not a findings[] array — contribute to synthesis
-            rec["review"]=(v.get("raw") or "")[:4000]
+            # surface the raw review prose so sentinel reviewers — which carry detail
+            # in text, not a findings[] array — contribute to synthesis. review_chars
+            # is the ORIGINAL length, so a caller can always tell it is reading a partial
+            # review; the work dir keeps the untrimmed text (--keep-work).
+            _raw=v.get("raw")
+            _raw=_raw if isinstance(_raw,str) else ("" if _raw is None else str(_raw))
+            rec["review_chars"]=len(_raw)
+            if cap and len(_raw)>cap:
+                rec["review"]=_raw[:cap]; rec["review_truncated"]=True
+                sys.stderr.write("ens-review: warning: %s review prose truncated to %d of %d chars "
+                                 "(raise ENSEMBLE_REVIEW_CAP, or set it to 0 for uncapped)\n"
+                                 % (ep,cap,len(_raw)))
+            else:
+                rec["review"]=_raw
         except Exception:
             rec["status"]="degraded"; rec["reason"]="unparseable"
     else:
@@ -248,6 +273,7 @@ if os.path.exists(mf):
         mutated.append(rec[3:] if (len(rec)>3 and rec[2]==" ") else rec)
 res={"reviewers":reviewers,"families_ok":fams_ok,"family_collisions":collisions,
      "quorum_required":min_q,"quorum_met":quorum_met,
+     "review_cap": cap,
      "read_only_violation": ro_v=="1",
      "read_only_guarded": ro_g=="1",
      "wip_replayed": wip,

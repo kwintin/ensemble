@@ -60,6 +60,19 @@ case "${STUB_MODE:-ok}" in
     printf 'This is a review with no sentinel at all.\n'
     exit 0
     ;;
+  long)
+    # ~11k chars of prose, well past the legacy 4000-char cap and under the 20000
+    # default — exercises reviewers[].review truncation end to end. The last line is
+    # PAD_LAST, so a test can prove the tail survived (or did not).
+    printf 'READ-ONLY REVIEW completed.\n\n'
+    _i=0
+    while [ "$_i" -lt 120 ]; do
+      printf 'PAD%03d: this line pads the sentinel review prose so it runs past the old 4000-char cap.\n' "$_i"
+      _i=$((_i+1))
+    done
+    printf 'PAD_LAST: the tail of the review.\n\n===VERDICT=== CHANGES\n===END===\n'
+    exit 0
+    ;;
   notfound)
     exit 127
     ;;

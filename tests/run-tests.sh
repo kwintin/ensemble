@@ -522,6 +522,55 @@ check "review ◀ skip: on auth" 0 0 "→ skip:auth" "$SKOUT"
 OPOUT="$(STUB_MODE=ok bash "$ROOT/scripts/ens-review.sh" --op round-1 --prompt-file "$ROOT/README.md" 2>&1 1>/dev/null)"
 check "review --op relabels" 0 0 "▶ round-1 gpt-5.5@codex" "$OPOUT"
 
+echo "== ens-review prose cap (ENSEMBLE_REVIEW_CAP) =="
+# Sentinel reviewers carry ALL of their substance in reviewers[].review — findings[] is
+# empty by construction — so a cap on that field silently discards real findings. The
+# 'long' grok stub emits ~10.6k chars of prose ending in PAD_LAST.
+RS="$ROOT/tests/fixtures/roster-sentinel.json"
+capd="$(mktemp -d)"; ( cd "$capd" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RS" "$capd/roster.json"
+cap_run() { # [CAP] [ERRFILE] -> merged JSON on stdout
+  local cap="${1:-}" ef="${2:-/dev/null}"
+  ( cd "$capd" && printf 'review this' | env ENSEMBLE_ROSTER="$capd/roster.json" \
+      ENS_TEST_MODES='a@grok=long,b@grok=long' ${cap:+ENSEMBLE_REVIEW_CAP="$cap"} \
+      bash "$ROOT/scripts/ens-review.sh" --reviewers a@grok,b@grok - 2>"$ef" )
+}
+cap_rv() { # FIELD (reads JSON on stdin) -> that field of a@grok
+  python3 -c 'import sys,json;d=json.load(sys.stdin);r=[x for x in d["reviewers"] if x["endpoint"]=="a@grok"][0];print(r[sys.argv[1]])' "$1"
+}
+# default: the whole review reaches the caller (the old hardcoded 4000 would have cut it)
+out="$(cap_run)"
+check "default cap does not truncate a ~10k sentinel review" 0 0 "False" "$(printf '%s' "$out" | cap_rv review_truncated)"
+rlen="$(printf '%s' "$out" | cap_rv review | wc -c | tr -d ' ')"
+check "default cap carries well past 4000 chars" 0 0 "1" "$([ "$rlen" -gt 4000 ] && echo 1 || echo 0)"
+check "review tail survives to the caller" 0 0 "PAD_LAST" "$out"
+check "default review_cap reported (20000)" 0 0 '"review_cap": 20000' "$out"
+check "review_chars reports the original length" 0 0 "1" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(1 if [x for x in d["reviewers"] if x["endpoint"]=="a@grok"][0]["review_chars"]>4000 else 0)')"
+# a configured cap is honoured — and never silently
+caperr="$(mktemp)"
+out="$(cap_run 500 "$caperr")"
+check "configured cap honoured (review trimmed to 500)" 0 0 "500" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(len([x for x in d["reviewers"] if x["endpoint"]=="a@grok"][0]["review"]))')"
+check "truncation flagged in the JSON" 0 0 "True" "$(printf '%s' "$out" | cap_rv review_truncated)"
+check "review_chars still reports the untrimmed length" 0 0 "1" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(1 if [x for x in d["reviewers"] if x["endpoint"]=="a@grok"][0]["review_chars"]>500 else 0)')"
+check "truncated review really lost its tail" 0 "$(printf '%s' "$out" | grep -q PAD_LAST && echo 1 || echo 0)"
+check "truncation warned on stderr" 0 0 "review prose truncated to 500 of" "$(cat "$caperr")"
+check "configured cap echoed in review_cap" 0 0 '"review_cap": 500' "$out"
+rm -f "$caperr"
+# 0 = uncapped
+out="$(cap_run 0)"
+check "ENSEMBLE_REVIEW_CAP=0 is uncapped" 0 0 "False" "$(printf '%s' "$out" | cap_rv review_truncated)"
+check "uncapped run reports review_cap 0" 0 0 '"review_cap": 0' "$out"
+check "uncapped run keeps the tail" 0 0 "PAD_LAST" "$out"
+# a malformed value must fall back to the default, never produce a nonsense slice
+for bad in abc -5 3.5; do
+  cerr="$(mktemp)"; out="$(cap_run "$bad" "$cerr")"
+  check "ENSEMBLE_REVIEW_CAP=$bad falls back to the default" 0 0 '"review_cap": 20000' "$out"
+  check "ENSEMBLE_REVIEW_CAP=$bad warns on stderr" 0 0 "ignoring invalid ENSEMBLE_REVIEW_CAP=$bad" "$(cat "$cerr")"
+  check "ENSEMBLE_REVIEW_CAP=$bad still returns the full review" 0 0 "PAD_LAST" "$out"
+  rm -f "$cerr"
+done
+rm -rf "$capd"
+
 echo "== ens-council (two-round de-biased review) =="
 cot="$(mktemp -d)"; ( cd "$cot" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
 cp "$RM" "$cot/roster.json"
@@ -562,6 +611,24 @@ check "council kept generic word 'medium' (not over-scrubbed)" 0 0 "medium" "$(c
 check "council kept generic word 'build'" 0 0 "build" "$(cat "$dbg/peer.txt" 2>/dev/null)"
 check "council kept generic word 'pro'" 0 0 "pro" "$(cat "$dbg/peer.txt" 2>/dev/null)"
 rm -rf "$cot3" "$dbg"
+
+# PEER-PROMPT FIDELITY: council anonymizes the round-1 `review` field into the peer
+# block, so a cap that bit in round 1 would have peers critique text they were never
+# shown — and read the missing tail as an omission. Prove the full prose gets through.
+cotf="$(mktemp -d)"; ( cd "$cotf" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+cp "$RS" "$cotf/roster.json"; dbgf="$(mktemp -d)"
+( cd "$cotf" && printf 'review this' | env ENS_COUNCIL_DEBUG_DIR="$dbgf" ENSEMBLE_ROSTER="$cotf/roster.json" \
+    ENS_TEST_MODES='a@grok=long,b@grok=long' bash "$ROOT/scripts/ens-council.sh" --reviewers a@grok,b@grok - >/dev/null 2>&1 )
+check "council peer prompt carries the full round-1 prose" 0 0 "PAD_LAST" "$(cat "$dbgf/peer.txt" 2>/dev/null)"
+check "council peer block is not cut at 4000 chars" 0 0 "1" "$([ "$(wc -c < "$dbgf/peer.txt" 2>/dev/null || echo 0)" -gt 8000 ] && echo 1 || echo 0)"
+rm -rf "$dbgf"
+# and when a cap DOES bite, the peer block says so rather than hiding the gap
+dbgf2="$(mktemp -d)"
+( cd "$cotf" && printf 'review this' | env ENS_COUNCIL_DEBUG_DIR="$dbgf2" ENSEMBLE_ROSTER="$cotf/roster.json" \
+    ENS_TEST_MODES='a@grok=long,b@grok=long' ENSEMBLE_REVIEW_CAP=500 bash "$ROOT/scripts/ens-council.sh" --reviewers a@grok,b@grok - >/dev/null 2>&1 )
+check "council marks a truncated peer review" 0 0 "peer review was truncated at" "$(cat "$dbgf2/peer.txt" 2>/dev/null)"
+check "truncated peer block really lost the tail" 0 "$(grep -q PAD_LAST "$dbgf2/peer.txt" 2>/dev/null && echo 1 || echo 0)"
+rm -rf "$dbgf2" "$cotf"
 
 echo "== ens-council provenance =="
 CLOUT="$(STUB_MODE=ok bash "$ROOT/scripts/ens-council.sh" --prompt-file "$ROOT/README.md" 2>&1 1>/dev/null)"

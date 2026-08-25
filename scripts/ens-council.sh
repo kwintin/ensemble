@@ -102,7 +102,15 @@ def render(r):
     rv=(r.get("review") or "").strip()
     if rv and not is_json(rv):     # codex's review field is a JSON blob -> use findings instead
         rv=re.split(r"\n?===VERDICT===", rv)[0].strip()   # drop the trailing sentinel block
-        if rv: parts.append(rv)
+        if rv:
+            parts.append(rv)
+            # A peer asked "what did they MISS" must never be handed a review whose tail
+            # was cut without saying so — it would critique text it was never shown, and
+            # read the gap as an omission. ens-review keeps the cap generous by default
+            # (ENSEMBLE_REVIEW_CAP); when it still bites, say so in the peer block.
+            if r.get("review_truncated"):
+                parts.append("[This peer review was truncated at %d of %d characters; its tail is not shown.]"
+                             % (len(rv), r.get("review_chars") or 0))
     return scrub("\n".join(parts))
 items=[(r["endpoint"], render(r)) for r in ok]
 # strip identity: order by content hash so label A.. does not track roster/model order
