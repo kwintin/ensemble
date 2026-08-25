@@ -5,10 +5,22 @@ SCRIPTS="$ROOT/scripts"
 source "$SCRIPTS/lib/roster-path.sh"   # resolves ROSTER (ENSEMBLE_ROSTER | CLAUDE_PLUGIN_DATA | shipped)
 source "$SCRIPTS/lib/timeout.sh"; source "$SCRIPTS/lib/roster.sh"
 [ -r "$ROSTER" ] || { echo "doctor: roster '$ROSTER' missing or unreadable" >&2; exit 1; }
-if ! command -v timeout >/dev/null 2>&1 && ! command -v gtimeout >/dev/null 2>&1; then
-  echo "  note: 'timeout'/'gtimeout' not found — using the perl/python fallback guard." >&2
-  echo "        install GNU coreutils for the robust path (macOS: brew install coreutils)." >&2
-fi
+# Report the guard that is actually in use. A present-but-inert timeout(1) is the
+# dangerous case: it looks installed while never interrupting a wedged dispatch.
+case "$(_ens_timeout_backend)" in
+  coreutils:*) : ;;
+  perl|python3)
+    if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+      echo "  note: 'timeout'/'gtimeout' is installed but did not interrupt a test child —" >&2
+      echo "        falling back to the portable guard. Dispatch timeouts still apply." >&2
+    else
+      echo "  note: 'timeout'/'gtimeout' not found — using the portable fallback guard." >&2
+      echo "        install GNU coreutils for the fastest path (macOS: brew install coreutils)." >&2
+    fi ;;
+  *)
+    echo "  warning: no working timeout backend (coreutils timeout, perl, or python3) —" >&2
+    echo "           dispatches will run UNGUARDED and a wedged CLI will not be killed." >&2 ;;
+esac
 FAIL=0
 
 # Health probes can FLAP: a slow/cold transport CLI intermittently returns an

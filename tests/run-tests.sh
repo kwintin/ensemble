@@ -39,6 +39,36 @@ check "invalid timeout secs -> 2" 2 "$rc"
 crc=0; ens_run_timeout 5 -- sh -c 'kill -SEGV $$' >/dev/null 2>&1 || crc=$?
 check "crash signal not mislabeled timeout (>=128, not 124)" 1 "$([ "$crc" -ge 128 ] && [ "$crc" -ne 124 ] && echo 1 || echo 0)"
 
+# A backend that reports success without ever interrupting the child is the worst
+# failure mode: every caller believes it is guarded. Stub a timeout(1) that
+# advertises --kill-after but never fires, and require the guard to notice and
+# fall through to one that works.
+btd="$(mktemp -d)"
+cat > "$btd/timeout" <<'SH'
+#!/usr/bin/env bash
+case "$1" in --help) echo "      --kill-after=DURATION"; exit 0 ;; esac
+while [ $# -gt 0 ]; do case "$1" in --kill-after=*) shift ;; *) break ;; esac; done
+shift                     # drop DURATION and run the child unguarded
+exec "$@"
+SH
+chmod +x "$btd/timeout"
+brc=0
+( PATH="$btd:$PATH"; source "$ROOT/scripts/lib/timeout.sh"; ens_run_timeout 2 -- sh -c 'sleep 10' ) || brc=$?
+check "a timeout(1) that never fires is detected and skipped" 124 "$brc"
+brc=0
+( PATH="$btd:$PATH"; source "$ROOT/scripts/lib/timeout.sh"; _ens_timeout_backend | grep -q '^coreutils:' ) && brc=1
+check "the broken backend is not selected" 0 "$brc"
+rm -rf "$btd"
+
+# The python3 backend waits on the child instead of arming a timer, so it stays
+# correct on a host whose alarm(2) timers are not firing. Exercise it directly.
+prc=0; ( ENS_TIMEOUT_FORCE_BACKEND=python3; source "$ROOT/scripts/lib/timeout.sh"; ens_run_timeout 2 -- sh -c 'sleep 10' ) || prc=$?
+check "timerless python3 backend kills a slow child -> 124" 124 "$prc"
+prc=0; ( ENS_TIMEOUT_FORCE_BACKEND=python3; source "$ROOT/scripts/lib/timeout.sh"; ens_run_timeout 1 -- sh -c 'trap "exit 0" TERM; sleep 10' ) || prc=$?
+check "timerless python3 backend beats a TERM trap -> 124" 124 "$prc"
+prc=0; ( ENS_TIMEOUT_FORCE_BACKEND=python3; source "$ROOT/scripts/lib/timeout.sh"; ens_run_timeout 5 -- sh -c 'echo fast' >/dev/null ) || prc=$?
+check "timerless python3 backend passes a fast command -> 0" 0 "$prc"
+
 echo "== signal classifier =="
 source "$ROOT/scripts/lib/signal.sh"
 ef="$(mktemp)"; se="$(mktemp)"; echo "Error: quota exceeded for model" >"$ef"

@@ -166,6 +166,11 @@ already handles the usual cross-platform snags:
 
 - `timeout(1)` is not installed by default on macOS, so the wall-clock guard falls back
   to a portable perl/python implementation, preferring `gtimeout` when it is present.
+  The guard also self-checks its backend before use: `timeout(1)` and the perl path are
+  both driven by `alarm(2)` timers, and a host whose timers do not fire makes them run
+  the child to completion and return its exit status instead of failing — a guard that
+  silently does nothing. A backend that fails to interrupt a live child is skipped in
+  favour of the timerless python3 path, and `doctor` reports which one is in use.
 - BSD `mktemp -d` on macOS ignores `$TMPDIR` and uses the Darwin per-user temp dir, but
   it still produces valid temp dirs, so the engines work either way. Where `$TMPDIR`
   routing actually matters, when a calibration run cleans up after itself, the code uses
